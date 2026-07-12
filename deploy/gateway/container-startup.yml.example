@@ -1,0 +1,5 @@
+# Read by launch-gateway on first boot (container node 1) to seed the admin user.
+# Copy to container-startup.yml and set a real password. If this file is absent,
+# the entrypoint generates a random password and prints it to the container log.
+gateway_admin_username: admin
+gateway_admin_password: changeme-please

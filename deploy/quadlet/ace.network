@@ -1,0 +1,6 @@
+[Unit]
+Description=ACE control-plane network
+
+[Network]
+NetworkName=ace
+# Rootless user-defined network gives container name DNS (ace-postgres, ace-redis)
