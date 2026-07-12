@@ -1,0 +1,23 @@
+[Unit]
+Description=ACE AWX web (controller)
+Requires=ace-postgres.service ace-redis.service
+After=ace-postgres.service ace-redis.service
+
+[Container]
+ContainerName=ace-awx-web
+Image=ghcr.io/ansible/awx:devel
+Network=ace.network
+PublishPort=8013:8013
+Exec=/usr/bin/launch_awx_web.sh
+Environment=OPENSSL_armcap=0
+Volume=%h/ace/awx/SECRET_KEY:/etc/tower/SECRET_KEY:ro,Z
+Volume=%h/ace/awx/conf.d/ace.py:/etc/tower/conf.d/ace.py:ro,Z
+Volume=%h/ace/awx/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
+Volume=%h/ace/awx/nginx/awx.conf:/etc/nginx/conf.d/awx.conf:ro,Z
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target
