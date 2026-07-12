@@ -1,0 +1,144 @@
+# syntax=docker/dockerfile:1.7
+#
+# ACE gateway image — the Ansible "Jewel" platform gateway, built entirely from
+# upstream source with the unified platform UI baked in. Nothing here depends on
+# Red Hat's private registry images (quay.io/ansible/gateway, .../platform-ui).
+#
+# Both upstream projects are Apache-2.0:
+#   - ansible/jewel      (the gateway app)      -> pinned by JEWEL_REF
+#   - ansible/ansible-ui (the platform UI)      -> pinned by ANSIBLE_UI_REF
+#
+# The python build and final-image assembly mirror jewel's own
+# tools/docker/Dockerfile end state; the only change is that the platform UI is
+# built from source here instead of pulled from the private
+# quay.io/ansible/platform-ui:latest image.
+#
+# Bump the two *_REF args (below or via --build-arg / workflow inputs) to move
+# the image forward. Keep them pinned to a commit for reproducible builds.
+
+ARG JEWEL_REF=cd1fd8e657f873f2b7c328cf3acc8696f23fb2ed
+ARG ANSIBLE_UI_REF=75d1264624fcf08777f72fcaaeaeb93d9d4a90d1
+ARG PYTHON=python3.12
+
+###############################################################################
+# Stage 0 — fetch pinned jewel source
+###############################################################################
+FROM quay.io/centos/centos:stream9 AS jewel-src
+ARG JEWEL_REF
+RUN dnf install -y git && dnf clean all
+WORKDIR /src
+RUN git clone https://github.com/ansible/jewel.git . && git checkout "${JEWEL_REF}"
+
+###############################################################################
+# Stage 1 — build the unified platform UI from ansible-ui (vite -> platform/dist)
+###############################################################################
+FROM docker.io/library/node:20-bookworm AS ui-builder
+ARG ANSIBLE_UI_REF
+WORKDIR /ui
+RUN git clone https://github.com/ansible/ansible-ui.git . && git checkout "${ANSIBLE_UI_REF}"
+RUN npm ci
+RUN cd platform && NODE_OPTIONS=--max-old-space-size=8192 npm run build
+# static assets land in /ui/platform/dist
+
+###############################################################################
+# Stage 2 — build the gateway python venv (mirrors jewel builder stage)
+###############################################################################
+FROM quay.io/centos/centos:stream9 AS builder
+ARG PYTHON
+
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ARG DJANGO_SETTINGS_MODULE=aap_gateway_api.settings
+ENV DJANGO_SETTINGS_MODULE=$DJANGO_SETTINGS_MODULE
+ENV PYTHONUNBUFFERED=1
+
+RUN sed -i '/^\[crb\]$/,/^enabled=0$/ s/enabled=0/enabled=1/' /etc/yum.repos.d/centos.repo && \
+    dnf install -y \
+      git \
+      gcc \
+      "${PYTHON}-devel" \
+      "${PYTHON}" \
+      "${PYTHON}-pip" \
+      libpq \
+      libpq-devel \
+      libtool-ltdl-devel \
+      openldap-devel \
+      postgresql \
+      less \
+      xmlsec1-devel && \
+    dnf clean all
+
+RUN mkdir -p /opt/aap_gateway && chgrp -R 0 /opt/aap_gateway && chmod -R g=u /opt/aap_gateway
+
+RUN "/usr/bin/${PYTHON}" -m venv /opt/aap_gateway/venv
+RUN echo "/opt/aap_gateway/aap_gateway" > "/opt/aap_gateway/venv/lib/${PYTHON}/site-packages/project.pth"
+
+# See: https://github.com/advisories/GHSA-r9hx-vwmv-q579
+RUN /opt/aap_gateway/venv/bin/pip install --upgrade 'setuptools>=65.5.1'
+
+COPY --from=jewel-src /src/requirements/requirements.txt /tmp/requirements.txt
+COPY --from=jewel-src /src/requirements/requirements_git.txt /tmp/requirements_git.txt
+RUN /opt/aap_gateway/venv/bin/pip --no-cache-dir install -r /tmp/requirements.txt
+RUN /opt/aap_gateway/venv/bin/pip --no-cache-dir install -r /tmp/requirements_git.txt
+
+###############################################################################
+# Stage 3 — final runtime image
+###############################################################################
+FROM quay.io/centos/centos:stream9
+ARG PYTHON
+
+RUN dnf module install -y nginx:1.22/common && \
+    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    dnf install -y \
+      inotify-tools \
+      less \
+      libpq \
+      postgresql \
+      "${PYTHON}" \
+      "${PYTHON}-pip" \
+      supervisor \
+      xmlsec1-openssl && \
+    dnf clean all
+
+COPY --from=builder /opt/aap_gateway /opt/aap_gateway
+COPY --from=jewel-src /src/tools/scripts/launch-gateway /usr/bin/launch-gateway
+COPY --from=jewel-src /src/tools/scripts/auto-reload /usr/bin/auto-reload
+COPY --from=jewel-src /src/tools/scripts/aap-gateway-manage /usr/bin/aap-gateway-manage
+COPY --from=jewel-src /src/tools/configs/nginx.conf /etc/ansible-automation-platform/gateway/nginx.conf
+COPY --from=jewel-src /src/tools/configs/nginx-gateway.conf /etc/ansible-automation-platform/gateway/nginx-gateway.conf
+COPY --from=jewel-src /src/tools/configs/uwsgi.ini /etc/ansible-automation-platform/gateway/uwsgi.ini
+COPY --from=jewel-src /src/tools/configs/supervisord.conf /etc/supervisord.conf
+COPY --from=jewel-src /src/tools/configs/settings.py /etc/ansible-automation-platform/gateway/settings.py
+
+RUN for dir in \
+      /etc/nginx \
+      /opt/aap_gateway \
+      /opt/aap_gateway/src \
+      /var/log/supervisor \
+      /var/run/supervisor \
+      /var/run/uwsgi \
+      /var/log/nginx \
+      /var/run/django_metrics ; \
+    do mkdir -m 0775 -p "$dir" ; chmod g+rwx "$dir" ; chgrp root "$dir" ; done && \
+    for file in \
+      /etc/nginx/gateway.crt \
+      /etc/nginx/gateway.key ; \
+    do touch "$file" ; chmod g+rw "$file" ; chgrp root "$file" ; done && \
+    ln -s /usr/bin/aap-gateway-manage /usr/bin/gateway-manage
+
+# Required for the xds protobuf definitions to stay compatible with protobuf
+# 3.21+. Remove once a newer xds-protos is available upstream.
+ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+
+COPY --from=jewel-src /src/aap_gateway_api /opt/aap_gateway/src/aap_gateway_api/
+ENV PATH=/opt/aap_gateway/venv/bin:$PATH
+ENV PYTHONPATH=/opt/aap_gateway/src
+
+# Platform UI, built from ansible-ui source instead of the private quay image.
+COPY --from=ui-builder /ui/platform/dist /opt/aap_gateway/platform_ui
+
+USER 1000
+EXPOSE 8000
+
+WORKDIR /opt
+CMD ["/usr/bin/launch-gateway"]
