@@ -9,6 +9,16 @@ Image=ghcr.io/sammonsjl/ace-gateway:latest
 Network=ace.network
 PublishPort=8000:8000
 
+# Django settings module. jewel's Dockerfile only sets this in the builder stage,
+# so the runtime container needs it explicitly (the official installer does the same).
+Environment=DJANGO_SETTINGS_MODULE=aap_gateway_api.settings
+
+# arm64-under-VMware workaround: OpenSSL's runtime ARM-capability probe hits an
+# instruction the virtualized Apple CPU traps on (SIGILL in cryptography). armcap=0
+# forces the generic paths. No-op on x86_64; only disables asm acceleration on
+# real arm64. Remove on bare-metal/amd64 hosts if you want the acceleration.
+Environment=OPENSSL_armcap=0
+
 # First (and only) node: entrypoint runs migrate + createsuperuser + authenticators --initialize
 Environment=CONTAINER_NUMBER=1
 
