@@ -75,17 +75,45 @@ warning is expected) and log in as `admin` with the password from
 - Reset everything: `systemctl --user stop ace-gateway ace-postgres ace-redis`,
   then `podman volume rm ace-postgres-data ace-redis-data`.
 
-## Next: add the controller (v0.2)
+## Add the controller (AWX)
 
-The controller image already exists upstream — **pull, don't build**:
-`ghcr.io/ansible/awx:devel` (public, multi-arch, fresh). To put the gateway in
-front of it (single login), the remaining wiring after AWX is up is:
+The controller image is **pulled, not built**: `ghcr.io/ansible/awx:devel`
+(public, multi-arch, fresh). It runs as a web + task container pair sharing the
+same postgres and redis. Everything below was validated on a Rocky 9 arm64 VM.
+
+```bash
+podman pull ghcr.io/ansible/awx:devel
+cd ace-images/deploy
+./awx-init.sh          # creates the awx DB, SECRET_KEY, migrates, provisions, registers queues
+cp quadlet/ace-awx-*.container ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start ace-awx-task.service ace-awx-web.service
+curl -s http://localhost:8013/api/v2/ping/ | python3 -m json.tool   # capacity > 0 when healthy
+```
+
+Gotchas found while bringing AWX up (all handled by the files here):
+
+- **SECRET_KEY** must be set from a `conf.d` file, not just `/etc/tower/SECRET_KEY`
+  — `defaults.py` reads that file into the *development* dynaconf layer, but
+  `awx-manage` runs in *production* (see `awx/conf.d/ace.py`).
+- **`ALLOWED_HOSTS`** must be set or every request 400s with a DisallowedHost.
+- The image ships only a stock `:80` nginx; **we supply an http-only `:8013`
+  config** (`awx/nginx/`) with pid/logs to writable paths (uid 1000, rootless).
+- **`OPENSSL_armcap=0`** — same arm64/VMware SIGILL workaround as the gateway.
+- The **task** container runs the supervisor directly (`awx/awx-task-run.sh`),
+  skipping `launch_awx_task.sh`'s `provision_instance` (fails outside K8s);
+  `awx-init.sh` provisions the instance once with `--hostname`.
+
+## Next: put the gateway in front of the controller (v0.2)
+
+Both planes run independently today. To get single login through the gateway,
+the remaining wiring is:
 
 1. `aap-gateway-manage generate_service_secret controller` on the gateway →
    inject the result into AWX's `RESOURCE_SERVER` settings.
-2. Register the controller service node/cluster/route — via the gateway REST
-   API (`ansible.platform`-style calls) as the containerized installer does,
-   cleaner than exec-ing manage commands.
+2. Register the controller service node/cluster/route via the gateway REST API
+   (`ansible.platform`-style calls), as the containerized installer does.
 3. Once AWX is registered: `aap-gateway-manage migrate_service_data --username=admin`.
 
-That's the v0.2 step. This directory intentionally stops at a working gateway.
+This is the JWT/resource-server federation step — the known-tricky part — and is
+not yet automated here.
