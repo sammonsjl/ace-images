@@ -15,6 +15,7 @@ official images.
 | Image | Built from | Why we build it |
 |-------|-----------|-----------------|
 | `ace-gateway` | [`ansible/jewel`](https://github.com/ansible/jewel) + [`ansible/ansible-ui`](https://github.com/ansible/ansible-ui) (`platform/`) | `quay.io/ansible/gateway` and `quay.io/ansible/platform-ui` are **private**. The gateway (Jewel) app plus the unified platform UI are baked into one image. |
+| `ace-hub` | [`ansible/galaxy_ng`](https://github.com/ansible/galaxy_ng) on `pulp/base` | `quay.io/ansible/galaxy-ng` is **amd64-only** (no arm64 build); `pulp/pulp-galaxy-ng` is abandoned. Also forces `django-ansible-base` to `devel` so galaxy_ng's JWT dialect matches the gateway's. |
 
 Still to do (see project notes): an `ace-controller` (AWX) image built from
 `devel` — `quay.io/ansible/awx` is frozen at `24.6.1` (Jul 2024), which predates
@@ -59,10 +60,32 @@ The GitHub Actions workflow (`build-gateway`) exposes the same two refs as
 `workflow_dispatch` inputs; leaving them blank uses the Containerfile defaults.
 It pushes `ghcr.io/<owner>/ace-gateway:latest` and a `:<date>-<sha>` tag.
 
+## `ace-hub`
+
+`hub/Containerfile` builds `galaxy_ng` at a pinned `GALAXY_NG_REF` on top of
+the multi-arch `pulp/base` image. Unlike the gateway, the `pulpcore` /
+`pulp_ansible` / `pulp-container` / `django` / `galaxy-importer` versions are
+**hand-pinned** in the `RUN pip3 install` step as constraints — mirroring
+galaxy_ng's own `setup.py` at that ref — to avoid pip backtracking for the
+better part of an hour. **Bumping `GALAXY_NG_REF` alone is not enough**: check
+galaxy_ng's `setup.py` at the new ref and update those pins to match before
+building, or the install will backtrack or resolve to incompatible versions.
+
+```
+docker build -f hub/Containerfile \
+  --build-arg GALAXY_NG_REF=<sha> \
+  -t ace-hub:dev hub
+```
+
+The GitHub Actions workflow (`build-hub`) exposes `GALAXY_NG_REF` as a
+`workflow_dispatch` input; leaving it blank uses the Containerfile default. It
+pushes `ghcr.io/<owner>/ace-hub:latest` and a `:<date>-<sha>` tag.
+
 ## Building on GHCR
 
-The `build-gateway` workflow runs on:
-- pushes to `main` touching `gateway/**`
-- manual `workflow_dispatch` (optionally with custom refs)
+- `build-gateway` runs on pushes to `main` touching `gateway/**`, or manual
+  `workflow_dispatch` (optionally with custom refs).
+- `build-hub` runs on pushes to `main` touching `hub/**`, or manual
+  `workflow_dispatch` (optionally with a custom ref).
 
 Images are pushed to GHCR and inherit this repo's (private) visibility.
