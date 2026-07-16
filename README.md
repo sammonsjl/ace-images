@@ -29,9 +29,19 @@ the gateway / django-ansible-base resource-server integration.
    `cd platform && npm run build` (vite → `platform/dist`).
 3. **builder** — CentOS Stream 9 venv, install the gateway's
    `requirements.txt` + `requirements_git.txt` (django-ansible-base from git).
-4. **final** — assemble the runtime (nginx 1.22, supervisor, uwsgi) exactly like
+4. **final** — assemble the runtime (nginx 1.24, supervisor, uwsgi) like
    jewel's own `tools/docker/Dockerfile`, but copy the platform UI from the
    `ui-builder` stage instead of the private `quay.io/ansible/platform-ui`.
+
+The final stage also adopts a few behaviors observed in the real
+`registry.redhat.io/ansible-automation-platform-26/gateway-rhel9` image
+(dissected 2026-07-15 — see the vault note *"(N) Gateway Image Internals — RH
+gateway-rhel9"*): `dumb-init` as PID 1, a named `gateway` user (uid 1000 /
+gid 0), `DJANGO_SETTINGS_MODULE` set in the runtime image, and `collectstatic`
+baked at build time. The jewel config contract (`/opt/aap_gateway`,
+`launch-gateway`, jewel's shipped supervisord/nginx/uwsgi configs) is
+unchanged — RH's hyphenated paths and installer-mounted configs are
+deliberately not copied.
 
 ### Pinned versions
 
