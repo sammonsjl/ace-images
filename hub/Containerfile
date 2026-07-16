@@ -25,6 +25,10 @@ RUN pip3 install --no-cache-dir \
       "pulp-container>=2.19.2,<2.20.0" \
       "django>=4.2.21,<4.3" \
       "galaxy-importer>=0.4.31,<0.5.0"
+# dab must match the gateway's: jewel builds against dab devel, whose JWTs
+# no longer carry the "objects" claim that galaxy_ng's default (year-old)
+# dab pin insists on. galaxy_ng's setup.py honors this env var.
+ENV DJANGO_ANSIBLE_BASE_BRANCH=devel
 RUN pip3 install --no-cache-dir \
       "galaxy-ng @ https://github.com/ansible/galaxy_ng/archive/${GALAXY_NG_REF}.tar.gz"
 
