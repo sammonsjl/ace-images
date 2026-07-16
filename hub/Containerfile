@@ -1,0 +1,45 @@
+# ace-hub — open-source Automation Hub image (galaxy_ng on pulpcore)
+#
+# No public arm64 galaxy_ng image exists (quay.io/ansible/galaxy-ng is
+# amd64-only; pulp/pulp-galaxy-ng is abandoned), so we build our own:
+# the multi-arch pulp/base + galaxy_ng from its upstream repo (Apache-2.0)
+# at a pinned ref. pip resolves the matching pulpcore/pulp_ansible/
+# pulp-container pins from galaxy_ng's own setup.py.
+#
+# The image carries no config: the installer mounts settings.py
+# (PULP_SETTINGS) and the key material, and picks the process per container:
+#   pulpcore-api / pulpcore-content / pulpcore-worker / pulpcore-manager
+
+FROM docker.io/pulp/base:latest
+
+ARG GALAXY_NG_REF=04335c3a5b3ccf0a501d7c01f8d3965007017cb8
+
+# galaxy_ng's own pip-compile lockfile as constraints — without it pip
+# backtracks for the better part of an hour.
+# Two-step install: the heavyweight pinned platform first (small, clean
+# resolution), then galaxy_ng on top — avoids pip's hour-long backtracking.
+# Pins mirror galaxy_ng's setup.py at the pinned ref.
+RUN pip3 install --no-cache-dir \
+      "pulpcore>=3.49.40,<3.50.0" \
+      "pulp_ansible>=0.25.1,<0.26" \
+      "pulp-container>=2.19.2,<2.20.0" \
+      "django>=4.2.21,<4.3" \
+      "galaxy-importer>=0.4.31,<0.5.0"
+RUN pip3 install --no-cache-dir \
+      "galaxy-ng @ https://github.com/ansible/galaxy_ng/archive/${GALAXY_NG_REF}.tar.gz"
+
+# Static assets baked at build (whitenoise serves them); group-root perms
+# for arbitrary-uid rootless runtime.
+ENV PULP_SETTINGS=/etc/pulp/settings.py \
+    DJANGO_SETTINGS_MODULE=pulpcore.app.settings
+RUN mkdir -p /var/lib/operator/static /etc/pulp/keys /var/lib/pulp /var/tmp/pulp && \
+    PULP_SECRET_KEY=build-only \
+    PULP_CONTENT_ORIGIN=http://localhost \
+    PULP_STATIC_ROOT=/var/lib/operator/static/ \
+    PULP_DB_ENCRYPTION_KEY=/dev/null \
+    PULP_REDIRECT_TO_OBJECT_STORAGE=False \
+    pulpcore-manager collectstatic --noinput && \
+    chgrp -R root /var/lib/operator/static /etc/pulp /var/lib/pulp /var/tmp/pulp && \
+    chmod -R g=u /var/lib/operator/static /etc/pulp /var/lib/pulp /var/tmp/pulp
+
+USER 1000
