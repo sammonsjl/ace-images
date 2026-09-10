@@ -1,0 +1,55 @@
+# Rebuild every image. Manual only — this is expensive: the controller alone is
+# a four-stage build with an AWX console compile, and it runs twice (amd64 and
+# arm64). Expect build-all to be dominated by it.
+
+name: build-all
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build (arm64 runners are billed on private repos)"
+        required: false
+        type: choice
+        default: "linux/amd64,linux/arm64"
+        options:
+          - "linux/amd64,linux/arm64"
+          - "linux/amd64"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  gateway:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: gateway, platforms: "${{ inputs.platforms }}" }
+  controller:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: controller, platforms: "${{ inputs.platforms }}" }
+  hub:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: hub, platforms: "${{ inputs.platforms }}" }
+  eda:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: eda, platforms: "${{ inputs.platforms }}" }
+  receptor:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: receptor, platforms: "${{ inputs.platforms }}" }
+  ee-minimal:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: ee-minimal, platforms: "${{ inputs.platforms }}" }
+  de-supported:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: de-supported, platforms: "${{ inputs.platforms }}" }
+  git-server:
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: git-server, platforms: "${{ inputs.platforms }}" }

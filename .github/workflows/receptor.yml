@@ -1,17 +1,17 @@
-name: build-hub
+name: build-receptor
 
 on:
   workflow_dispatch:
     inputs:
-      galaxy_ng_ref:
-        description: "ansible/galaxy_ng git ref (blank = Containerfile default)"
+      receptor_ref:
+        description: "ansible/receptor git ref (blank = Containerfile default)"
         required: false
         default: ""
   push:
     branches: [main]
     paths:
-      - "hub/**"
-      - ".github/workflows/hub.yml"
+      - "receptor/**"
+      - ".github/workflows/receptor.yml"
       - ".github/workflows/build-image.yml"
 
 jobs:
@@ -21,6 +21,6 @@ jobs:
       contents: read
       packages: write
     with:
-      image: hub
+      image: receptor
       build_args: |
-        ${{ inputs.galaxy_ng_ref && format('GALAXY_NG_REF={0}', inputs.galaxy_ng_ref) || '' }}
+        ${{ inputs.receptor_ref && format('RECEPTOR_REF={0}', inputs.receptor_ref) || '' }}

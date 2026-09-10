@@ -1,0 +1,31 @@
+name: build-de-supported
+
+on:
+  workflow_dispatch:
+    inputs:
+      ansible_rulebook_version:
+        description: "ansible-rulebook version (blank = Containerfile default)"
+        required: false
+        default: ""
+      ansible_core_version:
+        description: "ansible-core version (blank = Containerfile default)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "de-supported/**"
+      - ".github/workflows/de-supported.yml"
+      - ".github/workflows/build-image.yml"
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-image.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: de-supported
+      build_args: |
+        ${{ inputs.ansible_rulebook_version && format('ANSIBLE_RULEBOOK_VERSION={0}', inputs.ansible_rulebook_version) || '' }}
+        ${{ inputs.ansible_core_version && format('ANSIBLE_CORE_VERSION={0}', inputs.ansible_core_version) || '' }}
