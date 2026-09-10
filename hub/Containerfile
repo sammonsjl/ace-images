@@ -1,41 +1,58 @@
-# ace-hub — open-source Automation Hub image (galaxy_ng on pulpcore)
+# ACE hub — galaxy_ng on pulpcore, built from upstream source.
 #
-# No public arm64 galaxy_ng image exists (quay.io/ansible/galaxy-ng is
-# amd64-only; pulp/pulp-galaxy-ng is abandoned), so we build our own:
-# the multi-arch pulp/base + galaxy_ng from its upstream repo (Apache-2.0)
-# at a pinned ref. pip resolves the matching pulpcore/pulp_ansible/
-# pulp-container pins from galaxy_ng's own setup.py.
+# Why built rather than pulled: quay.io/ansible/galaxy-ng is amd64-only and
+# pulp/pulp-galaxy-ng is abandoned. The base is pulp's own multi-arch image;
+# galaxy_ng comes from its upstream repo (Apache-2.0) at a pinned ref, and pip
+# resolves the matching pulpcore / pulp_ansible / pulp-container pins from
+# galaxy_ng's own setup.py.
 #
-# The image carries no config: the installer mounts settings.py
-# (PULP_SETTINGS) and the key material, and picks the process per container:
+# The image carries no configuration. The quadlets mount settings.py and the key
+# material, and each container picks its process:
 #   pulpcore-api / pulpcore-content / pulpcore-worker / pulpcore-manager
 
-FROM docker.io/pulp/base:latest
+FROM docker.io/pulp/base:3.105
 
-ARG GALAXY_NG_REF=04335c3a5b3ccf0a501d7c01f8d3965007017cb8
+ARG GALAXY_NG_REF=0a252890010e89b0d675d5473b43eb4b175c1be0          # ansible/galaxy_ng main @ 2026-09-10
 
-# galaxy_ng's own pip-compile lockfile as constraints — without it pip
-# backtracks for the better part of an hour.
-# Two-step install: the heavyweight pinned platform first (small, clean
-# resolution), then galaxy_ng on top — avoids pip's hour-long backtracking.
-# Pins mirror galaxy_ng's setup.py at the pinned ref.
-RUN pip3 install --no-cache-dir \
-      "pulpcore>=3.49.40,<3.50.0" \
-      "pulp_ansible>=0.25.1,<0.26" \
-      "pulp-container>=2.19.2,<2.20.0" \
-      "django>=4.2.21,<4.3" \
-      "galaxy-importer>=0.4.31,<0.5.0"
-# dab must match the gateway's: jewel builds against dab devel, whose JWTs
-# no longer carry the "objects" claim that galaxy_ng's default (year-old)
-# dab pin insists on. galaxy_ng's setup.py honors this env var.
-ENV DJANGO_ANSIBLE_BASE_BRANCH=devel
-RUN pip3 install --no-cache-dir \
+ADD https://raw.githubusercontent.com/ansible/galaxy_ng/${GALAXY_NG_REF}/requirements/requirements.common.txt /tmp/galaxy-lock.txt
+
+# galaxy_ng's own pip-compile lockfile, used as constraints.
+#
+# Without it pip backtracks: galaxy_ng's setup.py declares loose ranges and the
+# resolver explores them for a very long time without failing. Constraining
+# every version to the set galaxy_ng itself pinned turns resolution into a
+# lookup.
+#
+# Two things have to be filtered out before pip will accept it:
+#   1. Extras — pip refuses a constraints file whose entries carry them
+#      ("Constraints cannot have extras"), and a pip-compile lockfile is full
+#      of them. The version pin is the point; the extras are not.
+#   2. Direct git references — a constraint must be a name and a version
+#      specifier, and the lockfile pins django-ansible-base to a git ref. That
+#      is also the one dependency we deliberately override below, so dropping
+#      it here is exactly right.
+RUN sed -E 's/\[[^]]*\]//' /tmp/galaxy-lock.txt | grep -v '@ git+' > /tmp/galaxy-constraints.txt
+
+RUN pip3 install --no-cache-dir -c /tmp/galaxy-constraints.txt \
       "galaxy-ng @ https://github.com/ansible/galaxy_ng/archive/${GALAXY_NG_REF}.tar.gz"
 
-# Static assets baked at build (whitenoise serves them); group-root perms
-# for arbitrary-uid rootless runtime.
+# django-ansible-base must match the gateway's. The gateway builds against DAB
+# devel, whose JWTs no longer carry a claim the pinned version still expects —
+# so hub would reject every token the gateway signs.
+ENV DJANGO_ANSIBLE_BASE_BRANCH=devel
+# devel resolved to a commit @ 2026-09-10 so the build is reproducible.
+# Re-check galaxy_ng's setup.py against this ref whenever GALAXY_NG_REF moves.
+RUN pip3 install --no-cache-dir --upgrade \
+      "django-ansible-base[feature-flags,jwt-consumer] @ git+https://github.com/ansible/django-ansible-base@3a099ee5fc4322397c79afcaf7dd1e045e2dc90c"
+
 ENV PULP_SETTINGS=/etc/pulp/settings.py \
-    DJANGO_SETTINGS_MODULE=pulpcore.app.settings
+    DJANGO_SETTINGS_MODULE=pulpcore.app.settings \
+    LANG=en_US.UTF-8 \
+    container=oci \
+    PYTHONUNBUFFERED=1
+
+# Static assets baked at build time; whitenoise serves them. Group-root
+# permissions so the image works at whatever uid it is given.
 RUN mkdir -p /var/lib/operator/static /etc/pulp/keys /var/lib/pulp /var/tmp/pulp && \
     PULP_SECRET_KEY=build-only \
     PULP_CONTENT_ORIGIN=http://localhost \
@@ -46,4 +63,10 @@ RUN mkdir -p /var/lib/operator/static /etc/pulp/keys /var/lib/pulp /var/tmp/pulp
     chgrp -R root /var/lib/operator/static /etc/pulp /var/lib/pulp /var/tmp/pulp && \
     chmod -R g=u /var/lib/operator/static /etc/pulp /var/lib/pulp /var/tmp/pulp
 
-USER 1000
+# A named user, and PYTHONUNBUFFERED=1 — the pulp/base image sets it to 0, which
+# means pulpcore's output sits in a buffer instead of reaching the journal. That
+# is a debugging tax you pay every time a worker misbehaves.
+RUN useradd -u 1000 -g 0 -d /var/lib/pulp -M -s /bin/bash galaxy 2>/dev/null || true
+
+USER galaxy
+WORKDIR /

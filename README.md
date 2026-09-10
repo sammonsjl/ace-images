@@ -1,91 +1,69 @@
 # ace-images
 
-Image factory for the **ACE** project — an upstream, open-source mirror of the
-AAP control plane that runs as rootless podman containers on a VM. This repo
-builds the container images that don't exist as usable public builds, and
-pushes them to GHCR.
+Image factory for **ACE** — an upstream, open-source mirror of an AAP-style
+automation platform. This repo builds every container image the platform runs
+and publishes them to GHCR as multi-arch manifests.
 
-Everything is built from **Apache-2.0 upstream source**. No files are copied out
-of Red Hat's bundle or private images — the upstream repos are cloned at pinned
-commits at build time, and the build only replicates the *end state* of the
-official images.
+Everything is built from **upstream source at pinned commits**. No files are
+copied out of any vendor bundle or private image: the upstream repositories are
+cloned at a fixed ref at build time, and the build replicates the *end state* of
+the official images without deriving from them. See [`NOTICE`](NOTICE).
 
-## Images
+## The images
 
 | Image | Built from | Why we build it |
-|-------|-----------|-----------------|
-| `ace-gateway` | [`ansible/jewel`](https://github.com/ansible/jewel) + [`ansible/ansible-ui`](https://github.com/ansible/ansible-ui) (`platform/`) | `quay.io/ansible/gateway` and `quay.io/ansible/platform-ui` are **private**. The gateway (Jewel) app plus the unified platform UI are baked into one image. |
-| `ace-hub` | [`ansible/galaxy_ng`](https://github.com/ansible/galaxy_ng) on `pulp/base` | `quay.io/ansible/galaxy-ng` is **amd64-only** (no arm64 build); `pulp/pulp-galaxy-ng` is abandoned. Also forces `django-ansible-base` to `devel` so galaxy_ng's JWT dialect matches the gateway's. |
+|---|---|---|
+| `ace-gateway` | [`jewel`](https://github.com/ansible/jewel) + [`ansible-ui`](https://github.com/ansible/ansible-ui) | Both published images are **private**. The gateway app and the unified console are baked into one image. |
+| `ace-controller` | [`awx`](https://github.com/ansible/awx) | `quay.io/ansible/awx` is frozen at 24.6.1 (Jul 2024), which predates the gateway / django-ansible-base resource-server integration this platform depends on. |
+| `ace-hub` | [`galaxy_ng`](https://github.com/ansible/galaxy_ng) on `pulp/base` | `quay.io/ansible/galaxy-ng` is amd64-only; `pulp/pulp-galaxy-ng` is abandoned. |
+| `ace-eda` | [`eda-server`](https://github.com/ansible/eda-server) | Built from source on principle, so the whole control plane has one provenance story. |
+| `ace-receptor` | [`receptor`](https://github.com/ansible/receptor) | Ships podman *in* the image, so nothing has to be bind-mounted from the host. |
+| `ace-ee-minimal` | ansible-core + ansible-runner | The execution environment jobs actually run in. |
+| `ace-de-supported` | ansible-rulebook + JVM | The decision environment EDA rulebooks run in. |
+| `ace-git-server` | `git-daemon` on EL9 | EDA rejects `file://` and cannot shallow-clone over dumb HTTP, so labs need a `git://` origin. |
 
-Still to do (see project notes): an `ace-controller` (AWX) image built from
-`devel` — `quay.io/ansible/awx` is frozen at `24.6.1` (Jul 2024), which predates
-the gateway / django-ansible-base resource-server integration.
+**Deliberately not built:** envoy (building it means bazel and hours — the
+upstream release binary is enough), PostgreSQL, Redis, and the nginx that fronts
+hub and EDA. None of them is the lesson, and all are configured by mounted files.
 
-## `ace-gateway`
+## Base images
 
-`gateway/Containerfile` is a single, self-contained multi-stage build:
+Seven of the eight are `quay.io/centos/centos:stream9` end to end. `node:20`
+(gateway console) and `golang` (receptor) appear only in build stages that are
+thrown away, so nothing but EL9 ships.
 
-1. **jewel-src** — clone `ansible/jewel` at `JEWEL_REF`.
-2. **ui-builder** — clone `ansible/ansible-ui` at `ANSIBLE_UI_REF`, `npm ci`,
-   `cd platform && npm run build` (vite → `platform/dist`).
-3. **builder** — CentOS Stream 9 venv, install the gateway's
-   `requirements.txt` + `requirements_git.txt` (django-ansible-base from git).
-4. **final** — assemble the runtime (nginx 1.24, supervisor, uwsgi) like
-   jewel's own `tools/docker/Dockerfile`, but copy the platform UI from the
-   `ui-builder` stage instead of the private `quay.io/ansible/platform-ui`.
+`ace-hub` is the exception: it builds on `docker.io/pulp/base:3.105`, pulp's own
+multi-arch image, pinned to the 3.105 line because that is the pulpcore
+`galaxy_ng`'s lockfile requires. **Do not move it to `:latest`** — as of
+2026-08-20 upstream purged their Stream 9 images, so `latest` is now CentOS
+Stream 10 carrying pulpcore 3.117, which no longer matches.
 
-The final stage also adopts a few behaviors observed in the real
-`registry.redhat.io/ansible-automation-platform-26/gateway-rhel9` image
-(dissected 2026-07-15 — see the vault note *"(N) Gateway Image Internals — RH
-gateway-rhel9"*): `dumb-init` as PID 1, a named `gateway` user (uid 1000 /
-gid 0), `DJANGO_SETTINGS_MODULE` set in the runtime image, and `collectstatic`
-baked at build time. The jewel config contract (`/opt/aap_gateway`,
-`launch-gateway`, jewel's shipped supervisord/nginx/uwsgi configs) is
-unchanged — RH's hyphenated paths and installer-mounted configs are
-deliberately not copied.
+## Everything is pinned
 
-### Pinned versions
+Every upstream ref is an `ARG` at the top of its Containerfile, holding a commit
+SHA rather than a branch. A moving `devel` or `main` is not reproducible, and an
+image that changes underneath you is the opposite of what this repo is for.
 
-Both upstream refs are pinned as `ARG`s at the top of the Containerfile and can
-be overridden per build:
+Override per build:
 
-```
-docker build -f gateway/Containerfile \
-  --build-arg JEWEL_REF=<sha> \
-  --build-arg ANSIBLE_UI_REF=<sha> \
-  -t ace-gateway:dev gateway
+```bash
+podman build -t localhost/ace-controller:dev \
+  --build-arg AWX_REF=<sha> controller/
 ```
 
-The GitHub Actions workflow (`build-gateway`) exposes the same two refs as
-`workflow_dispatch` inputs; leaving them blank uses the Containerfile defaults.
-It pushes `ghcr.io/<owner>/ace-gateway:latest` and a `:<date>-<sha>` tag.
+Each workflow exposes the same refs as `workflow_dispatch` inputs; leaving them
+blank uses the Containerfile defaults. CI resolves whatever ref it built to a
+commit and stamps it into the image as an OCI label, so `podman inspect` on any
+published tag tells you exactly what is inside it.
 
-## `ace-hub`
+Every directory carries a `NOTES.md` recording what was learned building that
+image — why receptor empties `/etc/subuid`, why `galaxy_ng` must build from
+`main` and not `master`, why AWX needs `SETUPTOOLS_SCM_PRETEND_VERSION`. Read it
+before changing a Containerfile.
 
-`hub/Containerfile` builds `galaxy_ng` at a pinned `GALAXY_NG_REF` on top of
-the multi-arch `pulp/base` image. Unlike the gateway, the `pulpcore` /
-`pulp_ansible` / `pulp-container` / `django` / `galaxy-importer` versions are
-**hand-pinned** in the `RUN pip3 install` step as constraints — mirroring
-galaxy_ng's own `setup.py` at that ref — to avoid pip backtracking for the
-better part of an hour. **Bumping `GALAXY_NG_REF` alone is not enough**: check
-galaxy_ng's `setup.py` at the new ref and update those pins to match before
-building, or the install will backtrack or resolve to incompatible versions.
+## Building
 
-```
-docker build -f hub/Containerfile \
-  --build-arg GALAXY_NG_REF=<sha> \
-  -t ace-hub:dev hub
-```
-
-The GitHub Actions workflow (`build-hub`) exposes `GALAXY_NG_REF` as a
-`workflow_dispatch` input; leaving it blank uses the Containerfile default. It
-pushes `ghcr.io/<owner>/ace-hub:latest` and a `:<date>-<sha>` tag.
-
-## Building on GHCR
-
-- `build-gateway` runs on pushes to `main` touching `gateway/**`, or manual
-  `workflow_dispatch` (optionally with custom refs).
-- `build-hub` runs on pushes to `main` touching `hub/**`, or manual
-  `workflow_dispatch` (optionally with a custom ref).
-
-Images are pushed to GHCR and inherit this repo's (private) visibility.
+CI builds each image on pushes to `main` touching its directory, or on manual
+dispatch; `build-all` rebuilds everything. Images are pushed to GHCR as
+`ghcr.io/<owner>/ace-<name>` with both a `:latest` and a dated
+`:<date>-<sha>` tag. Pin the dated tag in anything that consumes them.

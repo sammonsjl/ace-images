@@ -1,0 +1,107 @@
+# ACE EDA — eda-server, built from upstream source.
+#
+# A usable multi-arch upstream image does exist (quay.io/ansible/eda-server).
+# We build it anyway: an image you did not build is a component you did not
+# learn. This reproduces the end state of eda-server's own tools/docker/Dockerfile
+# with the development conveniences removed — no SSH key mounting, no dev extras.
+
+ARG EDA_REF=d3f2069c458cb446f2bf6bc50de941fad551a483                # ansible/eda-server main @ 2026-09-10
+ARG PYTHON_BIN=python3.12
+ARG ANSIBLE_CORE_VER=2.16
+ARG USER_ID=1001
+ARG STATIC_ROOT=/var/lib/ansible-automation-platform/eda/static
+
+###############################################################################
+# Stage 1 — source at a pinned commit
+###############################################################################
+FROM quay.io/centos/centos:stream9 AS eda-src
+ARG EDA_REF
+RUN dnf install -y git && dnf clean all
+WORKDIR /src
+RUN git clone https://github.com/ansible/eda-server.git . && git checkout "${EDA_REF}"
+
+###############################################################################
+# Stage 2 — the runtime
+###############################################################################
+FROM quay.io/centos/centos:stream9
+ARG PYTHON_BIN
+ARG ANSIBLE_CORE_VER
+ARG USER_ID
+ARG STATIC_ROOT
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8 \
+    container=oci
+
+# dumb-init is in EPEL, not the base repos.
+RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    dnf -y install dumb-init && dnf clean all
+
+# The vendor puts EDA's home under the platform tree and installs into the
+# SYSTEM interpreter — aap-eda-manage is /usr/bin/aap-eda-manage with a
+# #!/usr/bin/python3.12 shebang, not a venv entry point.
+RUN useradd --uid "$USER_ID" --gid 0 --home-dir /var/lib/ansible-automation-platform/eda --create-home eda && \
+    mkdir -p /var/lib/ansible-automation-platform/eda/.local \
+             /var/lib/ansible-automation-platform/eda/.cache \
+             /app/src && \
+    chown -R "${USER_ID}:0" /var/lib/ansible-automation-platform/eda /app && \
+    chmod 0775 /var/lib/ansible-automation-platform/eda /app
+
+RUN dnf -y install dnf-plugins-core && \
+    dnf -y config-manager --set-enabled crb && \
+    dnf -y install \
+      "${PYTHON_BIN}" "${PYTHON_BIN}-devel" "${PYTHON_BIN}-pip" \
+      libpq-devel libffi-devel git openssh-clients gcc gettext git-core \
+      glibc-langpack-en && \
+    dnf -y clean all && rm -rf /var/cache/dnf
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    SOURCES_DIR=/app/src \
+    HOME="/var/lib/ansible-automation-platform/eda"
+
+# Install into the SYSTEM interpreter with pip, the way the vendor does.
+#
+# Their image has no venv: aap_eda sits in /usr/lib/python3.12/site-packages and
+# its dist-info records INSTALLER=pip — not rpm. eda-server is a poetry project,
+# but poetry is not required to install it: `pip install .` reads pyproject.toml
+# through PEP 517 and resolves the same tree, without poetry's git backend, which
+# fails resolving django-ansible-base from a git ref.
+#
+# pip has to be taken out of rpm's hands first, or any dependency that wants to
+# upgrade it dies with "Cannot uninstall pip ... The package was installed by rpm".
+RUN ${PYTHON_BIN} -m pip install --ignore-installed --upgrade pip setuptools wheel
+
+WORKDIR $SOURCES_DIR
+COPY --from=eda-src /src $SOURCES_DIR/
+
+# --prefix=/usr, not the /usr/local that pip defaults to, so the package lands in
+# /usr/lib/python3.12/site-packages and the entry point in /usr/bin — exactly
+# where the vendor's image has them.
+RUN ${PYTHON_BIN} -m pip install --prefix=/usr . gunicorn && \
+    ${PYTHON_BIN} -m pip install --prefix=/usr "ansible-core==${ANSIBLE_CORE_VER}"
+
+USER "$USER_ID"
+RUN EDA_SECRET_KEY=build-only EDA_STATIC_ROOT=${STATIC_ROOT} \
+    aap-eda-manage collectstatic --noinput --clear
+
+USER 0
+RUN for dir in /app /var/lib/ansible-automation-platform/eda ; \
+    do mkdir -m 0775 -p $dir ; chmod g+rwx $dir ; chgrp root $dir ; done
+
+# Gunicorn, parameterised by environment — NOT `aap-eda-manage runserver`.
+# runserver is Django's development server: single-threaded, auto-reloading, and
+# explicitly not for production. Upstream's Dockerfile defaults to it because it
+# is a development image; the vendor's does not, and neither should this.
+ENV EDA_GUNICORN_BIND=0.0.0.0:8000 \
+    EDA_GUNICORN_WORKERS=2 \
+    EDA_GUNICORN_LOG_LEVEL=info \
+    EDA_MEDIA_ROOT=/var/lib/ansible-automation-platform/eda/media
+
+USER eda
+WORKDIR /var/lib/ansible-automation-platform/eda
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["/bin/sh", "-c", "gunicorn --bind ${EDA_GUNICORN_BIND} --workers=${EDA_GUNICORN_WORKERS} aap_eda.wsgi:application --log-level=${EDA_GUNICORN_LOG_LEVEL}"]
