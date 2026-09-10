@@ -91,7 +91,11 @@ RUN useradd -u 1000 -g 0 -d /var/lib/pulp -M -s /bin/bash galaxy 2>/dev/null || 
 RUN for tier in api content worker; do \
       printf '#!/bin/sh\nexec /usr/bin/pulp-%s "$@"\n' "$tier" > "/usr/bin/start-$tier" && \
       chmod +x "/usr/bin/start-$tier" ; \
-    done
+    done && \
+    printf '#!/bin/sh\nexec /usr/bin/wait_on_database_migrations.sh "$@"\n' \
+      > /usr/bin/wait-for-migrations && chmod +x /usr/bin/wait-for-migrations && \
+    printf '#!/bin/sh\nexec /usr/bin/wait_on_postgres.py "$@"\n' \
+      > /usr/bin/wait-for-postgres && chmod +x /usr/bin/wait-for-postgres
 
 USER galaxy
 WORKDIR /
