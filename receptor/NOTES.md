@@ -26,3 +26,14 @@ Tracks `devel`, which needs Go 1.25 and `GOFLAGS=-buildvcs=false` (the build
 runs on a shallow clone). Cross-checked against `receptor-rhel9`: uid 1000,
 dumb-init as PID 1, `receptor -c /etc/receptor/receptor.conf` as the command.
 The vendor's image has ansible-runner but no podman — it mounts the host's.
+
+## Verified 2026-09-10
+
+Builds and runs. Confirmed in the image: podman 5.8.5, ansible-runner 2.4.3,
+receptorctl, and `/etc/subuid` emptied to 0 bytes so the inner rootless podman
+falls back to single-UID mode.
+
+`receptor --version` prints nothing and exits 0. That is expected, not a broken
+build: the Go build uses `-buildvcs=false` because the shallow clone carries no
+usable VCS metadata, so the version string is never stamped. Use the
+`ace.source.ref` OCI label CI applies to find out what commit is inside.
