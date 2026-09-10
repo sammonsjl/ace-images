@@ -49,7 +49,8 @@ ENV AWX_LOGGING_MODE=stdout
 RUN dnf -y install 'dnf-command(config-manager)' && dnf config-manager --set-enabled crb && \
     dnf -y install \
       openssh-clients iputils gcc gcc-c++ git-core gettext glibc-langpack-en \
-      libffi-devel libtool-ltdl-devel make nss patch postgresql postgresql-devel \
+      libffi-devel libtool-ltdl-devel make nss openldap-devel patch \
+      postgresql postgresql-devel \
       "${PYTHON}" "${PYTHON}-devel" "${PYTHON}-pip" "${PYTHON}-setuptools" \
       "${PYTHON}-packaging" "${PYTHON}-psycopg2" swig unzip \
       xmlsec1-devel xmlsec1-openssl-devel && \
@@ -68,6 +69,14 @@ WORKDIR /tmp/src
 ENV SETUPTOOLS_SCM_PRETEND_VERSION=${AWX_VERSION}
 ENV VERSION=${AWX_VERSION}
 RUN make sdist && /var/lib/awx/venv/awx/bin/pip install dist/awx.tar.gz
+
+# awx-operator writes /etc/tower/settings.py containing
+#   from django_auth_ldap.config import *
+# and AWX's own requirements do not declare django-auth-ldap, so an image built
+# purely from them cannot load AWX's settings under that operator: uwsgi exits
+# with ModuleNotFoundError and the web pod never becomes ready. The upstream
+# awx image carries it; so must this one.
+RUN /var/lib/awx/venv/awx/bin/pip install --no-cache-dir django-auth-ldap
 
 RUN AWX_MODE=defaults \
     SKIP_SECRET_KEY_CHECK=yes \
@@ -96,7 +105,8 @@ RUN dnf -y install 'dnf-command(config-manager)' && dnf config-manager --set-ena
       acl git-core git-lfs glibc-langpack-en krb5-workstation postgresql \
       "${PYTHON}" "${PYTHON}-devel" "${PYTHON}-pip" "${PYTHON}-setuptools" \
       "${PYTHON}-packaging" "${PYTHON}-psycopg2" \
-      rsync rsyslog subversion sudo vim-minimal which unzip xmlsec1-openssl && \
+      openldap rsync rsyslog subversion sudo vim-minimal which unzip \
+      xmlsec1-openssl && \
     dnf -y clean all
 
 RUN pip3.12 install virtualenv supervisor dumb-init build && \
