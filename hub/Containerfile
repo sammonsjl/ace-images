@@ -76,26 +76,27 @@ RUN mkdir -p /var/lib/operator/static /etc/pulp/keys /var/lib/pulp /var/tmp/pulp
 # is a debugging tax you pay every time a worker misbehaves.
 RUN useradd -u 1000 -g 0 -d /var/lib/pulp -M -s /bin/bash galaxy 2>/dev/null || true
 
-# galaxy-operator starts each hub tier with start-api / start-content /
-# start-worker — the names the official galaxy-ng image uses. This image is
-# built to take its process as the container command instead, which the
-# podman track relies on, so under that operator every pod dies immediately
-# with:
+# galaxy-operator starts each hub tier by the names and ports the official
+# galaxy-ng image uses, and this image is built to take its process as the
+# container command instead — which the podman track relies on. Under that
+# operator the pods die immediately with "start-api: not found".
 #
-#   exec: "start-api": executable file not found in $PATH
-#
-# pulp/base already ships pulp-api, pulp-content and pulp-worker, and those do
-# exactly what the start-* scripts do — including waiting on postgres and on
-# migrations. These are aliases, so both callers work and neither name is
-# special.
-RUN for tier in api content worker; do \
-      printf '#!/bin/sh\nexec /usr/bin/pulp-%s "$@"\n' "$tier" > "/usr/bin/start-$tier" && \
-      chmod +x "/usr/bin/start-$tier" ; \
-    done && \
-    printf '#!/bin/sh\nexec /usr/bin/wait_on_database_migrations.sh "$@"\n' \
-      > /usr/bin/wait-for-migrations && chmod +x /usr/bin/wait-for-migrations && \
-    printf '#!/bin/sh\nexec /usr/bin/wait_on_postgres.py "$@"\n' \
-      > /usr/bin/wait-for-postgres && chmod +x /usr/bin/wait-for-postgres
+# Delegating to pulp/base's pulp-api is not enough: it binds 24817, while the
+# operator's probes and containerPort say 8000 for the api and 24816 for
+# content. So these bind what the operator expects. The waiters are aliases
+# onto pulp/base's equivalents, which is all the originals do.
+RUN set -eu; \
+    printf '#!/bin/sh\n/usr/bin/wait_on_postgres.py\n/usr/bin/wait_on_database_migrations.sh\nexec pulpcore-api --bind "[::]:8000" --name pulp-api --access-logfile - "$@"\n' \
+      > /usr/bin/start-api; \
+    printf '#!/bin/sh\n/usr/bin/wait_on_postgres.py\n/usr/bin/wait_on_database_migrations.sh\nexec pulpcore-content --bind "[::]:24816" --name pulp-content --access-logfile - "$@"\n' \
+      > /usr/bin/start-content-app; \
+    cp /usr/bin/start-content-app /usr/bin/start-content; \
+    printf '#!/bin/sh\n/usr/bin/wait_on_postgres.py\n/usr/bin/wait_on_database_migrations.sh\nexec pulpcore-worker "$@"\n' \
+      > /usr/bin/start-worker; \
+    printf '#!/bin/sh\nexec /usr/bin/wait_on_database_migrations.sh "$@"\n' > /usr/bin/wait-for-migrations; \
+    printf '#!/bin/sh\nexec /usr/bin/wait_on_postgres.py "$@"\n' > /usr/bin/wait-for-postgres; \
+    chmod +x /usr/bin/start-api /usr/bin/start-content-app /usr/bin/start-content \
+             /usr/bin/start-worker /usr/bin/wait-for-migrations /usr/bin/wait-for-postgres
 
 USER galaxy
 WORKDIR /
