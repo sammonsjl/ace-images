@@ -69,3 +69,15 @@ platform and the interpreter, the lockfile gives the versions.
 
 `GALAXY_NG_REF` is main as of 2026-08-27, the date this image is recorded as
 built and running, rather than main's current head.
+
+## Verified 2026-09-10
+
+Built on `pulp/base:3.117` and confirmed in the running image:
+
+    os        CentOS Stream 10
+    python    3.12.14
+    pulpcore  3.105.12     <- pulled back from the base's 3.117 by the lockfile
+    galaxy-ng 4.12.0.dev0  <- main, not master's 4.11
+
+That pulpcore line is the whole arrangement working as intended: the base
+supplies the platform and the interpreter, the lockfile supplies the versions.
