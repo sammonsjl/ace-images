@@ -90,10 +90,11 @@ COPY --from=jewel-src /src/tools/configs/supervisord.conf    /etc/supervisord.co
 COPY --from=jewel-src /src/tools/configs/settings.py         /etc/ansible-automation-platform/gateway/settings.py
 
 # jewel hardcodes its own base dir, /opt/aap_gateway, throughout the scripts and
-# configs it ships. We install to the vendor's /opt/aap-gateway, so everything
-# jewel supplies has to be retargeted. This is the price of matching Red Hat's
-# layout rather than upstream's — and it is why Red Hat does not ship these
-# scripts at all: their installer templates its own.
+# configs it ships. This image installs to /opt/aap-gateway to match the layout
+# the platform's own tooling resolves, so everything jewel supplies has to be
+# retargeted. That is the cost of matching the deployed layout rather than
+# upstream's — and it is why the released images carry no such scripts: their
+# installer templates its own. See NOTICE.
 RUN sed -i 's|/opt/aap_gateway|/opt/aap-gateway|g' \
       /usr/bin/launch-gateway /usr/bin/auto-reload /usr/bin/aap-gateway-manage \
       /etc/ansible-automation-platform/gateway/nginx-gateway.conf \
