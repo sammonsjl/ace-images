@@ -56,4 +56,15 @@ ENV HOME=/runner
 WORKDIR /runner
 CMD ["ansible-runner", "worker"]
 
+# An execution environment runs as an arbitrary uid against a project
+# directory owned by someone else, so git's ownership guard refuses to touch
+# the checkout:
+#
+#   fatal: detected dubious ownership in repository at /var/lib/awx/projects/...
+#
+# The clone succeeds and the very next git command fails, which reads as a
+# broken remote rather than a permissions check. Trusting any directory is the
+# right call specifically here: the container is the boundary, not the uid.
+RUN git config --system --add safe.directory '*'
+
 COPY --from=receptor-build /out/receptor /usr/bin/receptor
