@@ -1,17 +1,17 @@
-name: build-hub
+name: build-eda
 
 on:
   workflow_dispatch:
     inputs:
-      galaxy_ng_ref:
-        description: "ansible/galaxy_ng git ref (blank = Containerfile default)"
+      eda_ref:
+        description: "ansible/eda-server git ref (blank = Containerfile default)"
         required: false
         default: ""
   push:
     branches: [main]
     paths:
-      - "hub/**"
-      - ".github/workflows/hub.yml"
+      - "eda/**"
+      - ".github/workflows/eda.yml"
       - ".github/workflows/build-image.yml"
 
 jobs:
@@ -21,6 +21,6 @@ jobs:
       contents: read
       packages: write
     with:
-      image: hub
+      image: eda
       build_args: |
-        ${{ inputs.galaxy_ng_ref && format('GALAXY_NG_REF={0}', inputs.galaxy_ng_ref) || '' }}
+        ${{ inputs.eda_ref && format('EDA_REF={0}', inputs.eda_ref) || '' }}

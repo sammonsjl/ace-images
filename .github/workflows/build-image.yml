@@ -1,0 +1,159 @@
+# Reusable build for every image in this repo.
+#
+# Callers pass the directory name; everything else is uniform. Each platform
+# builds and pushes BY DIGEST, then a merge job assembles one multi-arch
+# manifest — the only way to get a real manifest list out of parallel runners
+# on different architectures.
+
+name: build-image
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Directory name, which is also the image name suffix"
+        required: true
+        type: string
+      build_args:
+        description: "Newline-separated ARG=value overrides"
+        required: false
+        type: string
+        default: ""
+      platforms:
+        description: "Comma-separated platforms to build"
+        required: false
+        type: string
+        default: "linux/amd64,linux/arm64"
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: ${{ inputs.image }} (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runs-on: ubuntu-latest
+          - platform: linux/arm64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip platforms the caller did not ask for
+        id: want
+        run: |
+          case ",${{ inputs.platforms }}," in
+            *",${{ matrix.platform }},"*) echo "build=true"  >> "$GITHUB_OUTPUT" ;;
+            *)                            echo "build=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Prepare names
+        if: steps.want.outputs.build == 'true'
+        run: |
+          owner="${{ github.repository_owner }}"
+          echo "IMAGE_NAME=${owner,,}/ace-${{ inputs.image }}" >> "$GITHUB_ENV"
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_TAG=${platform//\//-}" >> "$GITHUB_ENV"
+
+      # The Containerfile pins a commit; this records which one actually went in,
+      # so `podman inspect` on any published tag answers "what is in this?".
+      - name: Resolve the upstream ref that was built
+        if: steps.want.outputs.build == 'true'
+        id: src
+        run: |
+          sha=$(grep -hoE '^ARG [A-Z_]*REF=[0-9a-f]{40}' "${{ inputs.image }}/Containerfile" \
+                | head -1 | cut -d= -f2 || true)
+          echo "sha=${sha:-unpinned}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.want.outputs.build == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.want.outputs.build == 'true'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        if: steps.want.outputs.build == 'true'
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.image }}
+          file: ${{ inputs.image }}/Containerfile
+          platforms: ${{ matrix.platform }}
+          build-args: ${{ inputs.build_args }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+            ace.source.ref=${{ steps.src.outputs.sha }}
+          # Registry cache, not type=gha: eight images across two architectures
+          # would thrash the 10 GB Actions cache budget continuously.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ env.PLATFORM_TAG }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ env.PLATFORM_TAG }},mode=max
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        if: steps.want.outputs.build == 'true'
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.want.outputs.build == 'true'
+        with:
+          name: digests-${{ inputs.image }}-${{ env.PLATFORM_TAG }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: ${{ inputs.image }} (manifest)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ inputs.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        run: |
+          owner="${{ github.repository_owner }}"
+          echo "image=${owner,,}/ace-${{ inputs.image }}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest \
+            -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.date }}-${{ steps.meta.outputs.sha }} \
+            $(printf '${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}@sha256:%s ' *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest
