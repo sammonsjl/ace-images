@@ -76,9 +76,6 @@ RUN mkdir -p /var/lib/operator/static /etc/pulp/keys /var/lib/pulp /var/tmp/pulp
 # is a debugging tax you pay every time a worker misbehaves.
 RUN useradd -u 1000 -g 0 -d /var/lib/pulp -M -s /bin/bash galaxy 2>/dev/null || true
 
-USER galaxy
-WORKDIR /
-
 # galaxy-operator starts each hub tier with start-api / start-content /
 # start-worker — the names the official galaxy-ng image uses. This image is
 # built to take its process as the container command instead, which the
@@ -95,3 +92,6 @@ RUN for tier in api content worker; do \
       printf '#!/bin/sh\nexec /usr/bin/pulp-%s "$@"\n' "$tier" > "/usr/bin/start-$tier" && \
       chmod +x "/usr/bin/start-$tier" ; \
     done
+
+USER galaxy
+WORKDIR /
