@@ -10,9 +10,17 @@
 # material, and each container picks its process:
 #   pulpcore-api / pulpcore-content / pulpcore-worker / pulpcore-manager
 
-FROM docker.io/pulp/base:3.105
+# Pinned, because :latest moves daily. 3.117 is CentOS Stream 10 with Python
+# 3.12 — and the Python floor is what decides this, not the pulpcore version:
+# galaxy_ng's lockfile pins ansible-core==2.21.0, which requires >=3.12. The
+# 3.105 line is Stream 9 on Python 3.11 and cannot satisfy it.
+#
+# The base ships pulpcore 3.117; the constraints below pull it back to the
+# 3.105.x that galaxy_ng actually wants. The base supplies the platform and
+# the interpreter, the lockfile supplies the versions.
+FROM docker.io/pulp/base:3.117
 
-ARG GALAXY_NG_REF=0a252890010e89b0d675d5473b43eb4b175c1be0          # ansible/galaxy_ng main @ 2026-09-10
+ARG GALAXY_NG_REF=1f2b27c70398aef9976188ecd23bbb750213befb          # ansible/galaxy_ng main @ 2026-08-27
 
 ADD https://raw.githubusercontent.com/ansible/galaxy_ng/${GALAXY_NG_REF}/requirements/requirements.common.txt /tmp/galaxy-lock.txt
 

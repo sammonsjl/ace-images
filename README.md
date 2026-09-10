@@ -32,11 +32,16 @@ Seven of the eight are `quay.io/centos/centos:stream9` end to end. `node:20`
 (gateway console) and `golang` (receptor) appear only in build stages that are
 thrown away, so nothing but EL9 ships.
 
-`ace-hub` is the exception: it builds on `docker.io/pulp/base:3.105`, pulp's own
-multi-arch image, pinned to the 3.105 line because that is the pulpcore
-`galaxy_ng`'s lockfile requires. **Do not move it to `:latest`** — as of
-2026-08-20 upstream purged their Stream 9 images, so `latest` is now CentOS
-Stream 10 carrying pulpcore 3.117, which no longer matches.
+`ace-hub` is the exception: it builds on `docker.io/pulp/base:3.117`, pulp's own
+multi-arch image — CentOS Stream 10 on Python 3.12.
+
+**Pin it, and pin it for the interpreter, not the pulpcore version.** `:latest`
+moves daily and must not be used. But the tag to pin to is decided by Python:
+`galaxy_ng`'s lockfile pins `ansible-core==2.21.0`, which requires Python 3.12,
+so the Stream 9 / Python 3.11 lines (3.105 and earlier) cannot satisfy it at
+all. The base then ships pulpcore 3.117 and the lockfile constraints pull it
+back to the 3.105.x galaxy_ng wants — the base supplies the platform and the
+interpreter, the lockfile supplies the versions.
 
 ## Everything is pinned
 
