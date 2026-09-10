@@ -14,7 +14,7 @@ galaxy_ng on pulpcore.
 Refs this image builds at (resolved 2026-09-10):
 
 ```
-ARG GALAXY_NG_REF=0a252890010e89b0d675d5473b43eb4b175c1be0   # main
+ARG GALAXY_NG_REF=1f2b27c70398aef9976188ecd23bbb750213befb   # main @ 2026-08-27
 django-ansible-base @ 3a099ee5fc4322397c79afcaf7dd1e045e2dc90c   # devel
 ```
 
@@ -44,3 +44,28 @@ exactly.
 
 Config parity: named `galaxy` user, WORKDIR /, PYTHONUNBUFFERED=1 (the pulp/base
 image sets it to 0, which keeps pulpcore's output out of the journal).
+
+## Base image — corrected 2026-09-10
+
+First attempt at pinning the base picked `pulp/base:3.105`, reasoning that the
+tag should match the pulpcore galaxy_ng asks for. That is wrong, and it fails
+the build outright:
+
+    ERROR: Cannot install galaxy-ng because these package versions have
+    conflicting dependencies.
+        ansible-lint 26.4.0 depends on ansible-core>=2.16.14
+        The user requested (constraint) ansible-core==2.21.0
+
+The message is misleading — those two are compatible. The real cause is the
+interpreter. `ansible-core==2.21.0` requires Python >= 3.12; the 3.105 line is
+CentOS Stream 9 on Python 3.11, so the constraint is simply unsatisfiable and
+pip reports the nearest conflicting pair instead. The giveaway in the log is
+`pip is looking at multiple versions of <Python from Requires-Python>`.
+
+**The base tag is chosen by Python version, not by pulpcore version.** 3.117 is
+Stream 10 on Python 3.12.14. pulpcore is then downgraded to 3.105.x by the
+lockfile constraints, which is the intended arrangement: the base gives the
+platform and the interpreter, the lockfile gives the versions.
+
+`GALAXY_NG_REF` is main as of 2026-08-27, the date this image is recorded as
+built and running, rather than main's current head.
