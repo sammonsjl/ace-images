@@ -9,6 +9,11 @@
 
 ARG JEWEL_REF=cd1fd8e657f873f2b7c328cf3acc8696f23fb2ed          # ansible/jewel devel, verified 2026-08-27
 ARG ANSIBLE_UI_REF=75d1264624fcf08777f72fcaaeaeb93d9d4a90d1     # ansible/ansible-ui devel, verified 2026-08-27
+# jewel's requirements_git.txt pulls django-ansible-base from a branch, resolved at
+# build time. The default keeps that. build-all passes one DAB commit to both this
+# image and the hub, so the gateway that signs tokens and the hub that checks them
+# are built against the same DAB.
+ARG DAB_REF=devel
 ARG PYTHON=python3.12
 
 ###############################################################################
@@ -35,6 +40,7 @@ RUN cd platform && NODE_OPTIONS=--max-old-space-size=8192 npm run build
 ###############################################################################
 FROM quay.io/centos/centos:stream9 AS builder
 ARG PYTHON
+ARG DAB_REF
 
 ENV LANG=en_US.UTF-8
 ENV DJANGO_SETTINGS_MODULE=aap_gateway_api.settings
@@ -55,6 +61,10 @@ RUN /opt/aap-gateway/venv/bin/pip install --upgrade 'setuptools>=65.5.1'
 COPY --from=jewel-src /src/requirements/requirements.txt /tmp/requirements.txt
 COPY --from=jewel-src /src/requirements/requirements_git.txt /tmp/requirements_git.txt
 RUN /opt/aap-gateway/venv/bin/pip --no-cache-dir install -r /tmp/requirements.txt
+# Point jewel's DAB line at DAB_REF, and fail if there was no such line to rewrite:
+# a silent no-op would build a gateway on a different DAB than the hub.
+RUN sed -Ei "s#(django-ansible-base(\[[^]]*\])? @ git\+https://github.com/ansible/django-ansible-base)@[^[:space:]]+#\1@${DAB_REF}#" /tmp/requirements_git.txt && \
+    grep -q "django-ansible-base@${DAB_REF}\$" /tmp/requirements_git.txt
 RUN /opt/aap-gateway/venv/bin/pip --no-cache-dir install -r /tmp/requirements_git.txt
 
 ###############################################################################

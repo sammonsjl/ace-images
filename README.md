@@ -43,11 +43,12 @@ all. The base then ships pulpcore 3.117 and the lockfile constraints pull it
 back to the 3.105.x galaxy_ng wants — the base supplies the platform and the
 interpreter, the lockfile supplies the versions.
 
-## Everything is pinned
+## Pinned by default, latest on demand
 
 Every upstream ref is an `ARG` at the top of its Containerfile, holding a commit
-SHA rather than a branch. A moving `devel` or `main` is not reproducible, and an
-image that changes underneath you is the opposite of what this repo is for.
+SHA rather than a branch, so an image built on its own is reproducible. The one
+deliberate exception is `build-all`, which exists to pick up whatever upstream
+has merged since — see [Building](#building).
 
 Override per build:
 
@@ -69,6 +70,19 @@ before changing a Containerfile.
 ## Building
 
 CI builds each image on pushes to `main` touching its directory, or on manual
-dispatch; `build-all` rebuilds everything. Images are pushed to GHCR as
-`ghcr.io/<owner>/ace-<name>` with both a `:latest` and a dated
-`:<date>-<sha>` tag. Pin the dated tag in anything that consumes them.
+dispatch, from the Containerfile's pinned refs. Those builds are tagged
+`:<date>-<sha>` (this repo's commit) and `:latest`.
+
+**`build-all` rebuilds everything from the latest upstream.** Run it by hand
+whenever you want fresh images. Its first job reads the current head of every
+upstream branch once — `jewel`, `ansible-ui`, `awx`, `galaxy_ng`, `eda-server`,
+`receptor` and `django-ansible-base` — and all eight images are built from
+those same commits. The gateway and the hub are given the **same** DAB commit,
+because the hub has to accept the tokens the gateway signs. The run's summary
+lists every commit, and each image carries its own in the `ace.source.ref` label.
+
+A `build-all` run tags every image with one shared `:<date>-r<run number>`, plus
+`:latest`. The run number keeps the tag unique: two "latest" builds on the same
+day are different images and must never share a tag. Pin that one tag in
+anything that consumes the images — the containerized installer's
+`ace_image_tag`, or the operator's `ace_image_tag` / per-image `image:` fields.

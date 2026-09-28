@@ -24,6 +24,11 @@ on:
         required: false
         type: string
         default: "linux/amd64,linux/arm64"
+      tag:
+        description: "Tag to publish besides :latest (blank = <date>-<commit>)"
+        required: false
+        type: string
+        default: ""
 
 env:
   REGISTRY: ghcr.io
@@ -62,14 +67,22 @@ jobs:
           platform="${{ matrix.platform }}"
           echo "PLATFORM_TAG=${platform//\//-}" >> "$GITHUB_ENV"
 
-      # The Containerfile pins a commit; this records which one actually went in,
-      # so `podman inspect` on any published tag answers "what is in this?".
+      # Records which upstream commit actually went in, so `podman inspect` on
+      # any published tag answers "what is in this?". That is the override when
+      # the caller passed one (build-all always does), else the Containerfile's pin.
       - name: Resolve the upstream ref that was built
         if: steps.want.outputs.build == 'true'
         id: src
+        env:
+          BUILD_ARGS: ${{ inputs.build_args }}
         run: |
-          sha=$(grep -hoE '^ARG [A-Z_]*REF=[0-9a-f]{40}' "${{ inputs.image }}/Containerfile" \
-                | head -1 | cut -d= -f2 || true)
+          pin=$(grep -hoE '^ARG [A-Z_]*REF=[0-9a-f]{40}' "${{ inputs.image }}/Containerfile" | head -1 || true)
+          name=${pin#ARG }; name=${name%%=*}
+          sha=${pin##*=}
+          if [ -n "$name" ]; then
+            override=$(printf '%s\n' "$BUILD_ARGS" | sed -nE "s/^[[:space:]]*${name}=([0-9a-f]{40})[[:space:]]*$/\1/p" | head -1)
+            sha=${override:-$sha}
+          fi
           echo "sha=${sha:-unpinned}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
@@ -144,15 +157,17 @@ jobs:
         run: |
           owner="${{ github.repository_owner }}"
           echo "image=${owner,,}/ace-${{ inputs.image }}" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
-          echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          # build-all passes one tag for the whole run; a single-image build
+          # falls back to <date>-<commit of this repo>.
+          tag="${{ inputs.tag }}"
+          echo "tag=${tag:-$(date -u +%Y%m%d)-${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
             -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest \
-            -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.date }}-${{ steps.meta.outputs.sha }} \
+            -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }} \
             $(printf '${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}@sha256:%s ' *)
 
       - name: Inspect

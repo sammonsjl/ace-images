@@ -21,6 +21,7 @@
 FROM docker.io/pulp/base:3.117
 
 ARG GALAXY_NG_REF=1f2b27c70398aef9976188ecd23bbb750213befb          # ansible/galaxy_ng main @ 2026-08-27
+ARG DAB_REF=3a099ee5fc4322397c79afcaf7dd1e045e2dc90c                # ansible/django-ansible-base devel @ 2026-09-10
 
 ADD https://raw.githubusercontent.com/ansible/galaxy_ng/${GALAXY_NG_REF}/requirements/requirements.common.txt /tmp/galaxy-lock.txt
 
@@ -48,10 +49,11 @@ RUN pip3 install --no-cache-dir -c /tmp/galaxy-constraints.txt \
 # devel, whose JWTs no longer carry a claim the pinned version still expects —
 # so hub would reject every token the gateway signs.
 ENV DJANGO_ANSIBLE_BASE_BRANCH=devel
-# devel resolved to a commit @ 2026-09-10 so the build is reproducible.
+# DAB_REF defaults to devel resolved to a commit, so a one-off hub build is
+# reproducible. build-all overrides it with the same DAB commit it gives the gateway.
 # Re-check galaxy_ng's setup.py against this ref whenever GALAXY_NG_REF moves.
 RUN pip3 install --no-cache-dir --upgrade \
-      "django-ansible-base[feature-flags,jwt-consumer] @ git+https://github.com/ansible/django-ansible-base@3a099ee5fc4322397c79afcaf7dd1e045e2dc90c"
+      "django-ansible-base[feature-flags,jwt-consumer] @ git+https://github.com/ansible/django-ansible-base@${DAB_REF}"
 
 ENV PULP_SETTINGS=/etc/pulp/settings.py \
     DJANGO_SETTINGS_MODULE=pulpcore.app.settings \
