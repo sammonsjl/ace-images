@@ -8,3 +8,5 @@ setuptools-scm>=8
 # sdists build CMake and Ninja themselves.
 cmake>=3.15
 ninja
+# ast-serialize (a build tool in pytokens' chain, via mypy) is Rust that needs
+# rustc 1.95, newer than UBI's 1.92, so it is taken as a wheel too.
