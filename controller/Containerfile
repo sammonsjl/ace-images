@@ -16,8 +16,7 @@ FROM registry.access.redhat.com/ubi9/ubi:9.8 AS venv
 # signed with CentOS's key, which ubi9 does not carry.
 COPY RPM-GPG-KEY-centosofficial /etc/pki/rpm-gpg/
 RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
-RUN dnf module enable -y postgresql:15 && \
-    dnf install -y --nodocs python3.12 python3.12-devel gcc gcc-c++ make pkgconf-pkg-config \
+RUN dnf install -y --nodocs python3.12 python3.12-devel gcc gcc-c++ make pkgconf-pkg-config \
       libpq-devel krb5-devel libffi-devel openssl-devel libxml2-devel libxslt-devel \
       xmlsec1-devel xmlsec1-openssl-devel libtool-ltdl-devel openldap-devel rust cargo && \
     dnf clean all
@@ -59,8 +58,10 @@ ENV LC_ALL=en_US.UTF-8
 ENV AWX_LOGGING_MODE=stdout
 
 # The vendor's list, less c-ares and redis (neither is in UBI; grpcio carries
-# its own c-ares, and redis runs in a container of its own).
-RUN microdnf -y module enable 'nginx:1.24' 'postgresql:15' && \
+# its own c-ares, and redis runs in a container of its own). UBI has no
+# postgresql:15 module stream, so the client is the default stream's; only
+# nginx:1.24 is enabled.
+RUN microdnf -y module enable 'nginx:1.24' && \
     microdnf update --setopt=install_weak_deps=0 --nodocs -y && \
     microdnf install --setopt=install_weak_deps=0 --nodocs -y \
       glibc-langpack-en python3.12 python3.12-pyyaml python3.12-pip hostname \

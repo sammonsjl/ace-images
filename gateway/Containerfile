@@ -54,9 +54,10 @@ RUN npm ci --no-audit --no-fund && \
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 
 ARG NGINX_VERSION=1.24
-ARG POSTGRESQL_VERSION=15
 
-RUN microdnf -y module enable nginx:$NGINX_VERSION postgresql:$POSTGRESQL_VERSION && \
+# The vendor also enables postgresql:15; UBI carries no such module stream, so
+# the client is the default stream's.
+RUN microdnf -y module enable nginx:$NGINX_VERSION && \
     microdnf update --setopt=install_weak_deps=0 --nodocs -y && \
     microdnf install --setopt=install_weak_deps=0 --nodocs -y \
       glibc glibc-langpack-en pcre2 python3.12 python3.12-pip libpq openssl \
