@@ -37,11 +37,11 @@ What it took:
   not used, because it forces `CGO_ENABLED=0`, and with CGO off RHEL's Go
   switches to its native FIPS module instead.
 - **Wheels:** every wheel is built from its sdist, without build isolation,
-  against the build backends in `build-requirements.txt` (setuptools 82.0.1,
+  against the build backends in `requirements-build.txt` (setuptools 82.0.1,
   flit_core 3.12.0: what the vendor's `WHEEL` files name). The runtime
   installs them with `--no-index --prefix /usr`. libyaml-devel is left out on
   purpose, so PyYAML has no C loader, as in the vendor image.
-- **Versions:** `constraints.txt` is the vendor's `pip freeze`.
+- **Versions:** `requirements.in` pins the vendor's `pip freeze`.
 
 ## Built hermetically, the Konflux way (2026-10-19)
 
