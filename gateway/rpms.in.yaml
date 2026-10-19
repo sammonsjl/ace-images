@@ -13,6 +13,11 @@ arches:
 moduleEnable:
   - nginx:1.24
   - nodejs:22
+# The final stage reinstalls tzdata (ubi-minimal ships it without its zone
+# files), and a reinstall needs the installed version in the repo, which an
+# ordinary resolution leaves out as already present.
+reinstallPackages:
+  - tzdata
 packages:
   # wheels stage
   - python3.12-devel

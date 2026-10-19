@@ -53,10 +53,8 @@ def programs(cmd):
 
 def shape(line):
     line = line.strip()
-    m = re.match(r"^\|\d+ (.*)$", line)  # "|2 A=1 B=2 /bin/sh -c ..." -> RUN with build args
-    if m:
-        line = m.group(1)
-        line = re.sub(r"^(\S+=\S*\s+)+", "", line)
+    if re.match(r"^\|\d+ ", line):  # "|2 A=1 B=x y /bin/sh -c ..." -> RUN with build args
+        line = line[line.index("/bin/sh -c "):] if "/bin/sh -c " in line else line
     nop = re.match(r"^/bin/sh -c #\(nop\)\s+(\w+)\s*(.*)$", line, re.S)
     if nop:
         instr, rest = nop.group(1).upper(), nop.group(2)
@@ -88,7 +86,16 @@ def shape(line):
 
 
 def final_stage(ref):
-    steps = [s for s in (shape(h) for h in history(ref)) if s]
+    steps = []
+    for st in (shape(h) for h in history(ref)):
+        if not st:
+            continue
+        # buildah records each ARG instruction with every ARG declared so far,
+        # so a run of them is one declaration block: keep only the last.
+        if st.startswith("ARG ") and steps and steps[-1].startswith("ARG "):
+            steps[-1] = st
+            continue
+        steps.append(st)
     # The base image's own steps end with its CMD; everything after the last
     # CMD that is not this image's own (final) CMD belongs to the final stage.
     # A squashed vendor base leaves no steps at all, so nothing is cut there.

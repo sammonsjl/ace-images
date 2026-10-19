@@ -61,7 +61,7 @@ COPY --from=builder /output/ /output/
 RUN /output/scripts/install-from-bindep && rm -rf /output/wheels
 RUN mkdir -p /runner && chgrp 0 /runner && chmod -R ug+rwx /runner
 WORKDIR /runner
-RUN for dir in /home/runner /home/runner/.ansible /home/runner/.ansible/tmp /runner /runner/env /runner/inventory /runner/project /runner/artifacts ; do mkdir -m 0775 -p $dir ; chmod -R g+rwx $dir ; chgrp -R root $dir ; done
+RUN for dir in /home/runner /home/runner/.ansible /home/runner/.ansible/tmp /runner /runner/env /runner/inventory /runner/project /runner/artifacts ; do mkdir -m 0775 -p $dir ; chmod -R g+rwx $dir ; chgrp -R root $dir ; done && for file in /home/runner/.ansible/galaxy_token /etc/passwd /etc/group ; do touch $file ; chmod g+rw $file ; chgrp root $file ; done
 RUN alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 RUN alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.12 1
 RUN $PKGMGR reinstall --setopt=install_weak_deps=0 --nodocs -y tzdata && $PKGMGR clean all

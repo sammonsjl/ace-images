@@ -28,6 +28,9 @@ dependencies:
 
 options:
   package_manager_path: /usr/bin/microdnf
+  # dumb-init, the entrypoint and the command all come from ace-de-minimal.
+  container_init:
+    package_pip: ""
 
 additional_build_steps:
   prepend_base:

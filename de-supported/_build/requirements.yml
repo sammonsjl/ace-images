@@ -1,0 +1,5 @@
+# ansible.eda from the prefetched tarball (artifacts.lock.yaml), so the galaxy
+# stage installs it with no network.
+collections:
+  - name: /cachi2/output/deps/generic/ansible-eda-2.13.0.tar.gz
+    type: file

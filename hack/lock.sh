@@ -15,6 +15,7 @@
 #                                                      backends (builds with isolation)
 #   rpms.in.yaml           -> rpms.lock.yaml           every RPM, both arches
 #   lock-pre.sh            runs first, if the image has one
+#   lock-post.sh           runs after the pip locks, if the image has one
 set -euo pipefail
 
 image=${1:?usage: hack/lock.sh <image>}
@@ -55,6 +56,10 @@ fi
 # maturin's puccinialin), pinned on their own.
 if [ -f "$image/requirements-build-extra.in" ]; then
   compile requirements-build-extra.in requirements-build-extra.txt
+fi
+# ...and may trim what pip-compile pulled in.
+if [ -f "$image/lock-post.sh" ]; then
+  run sh ./lock-post.sh
 fi
 if [ -f "$image/rpms.in.yaml" ]; then
   run rpm-lockfile-prototype --outfile rpms.lock.yaml rpms.in.yaml
