@@ -54,6 +54,7 @@ ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
 RUN $PYCMD -m pip install --no-cache-dir bindep pyyaml packaging
+ARG PIP_OPTS=--no-deps
 
 COPY --from=galaxy /usr/share/ansible /usr/share/ansible
 
@@ -74,6 +75,7 @@ ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
 ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
+ARG PIP_OPTS=--no-deps
 RUN /output/scripts/check_ansible $PYCMD
 
 COPY --from=galaxy /usr/share/ansible /usr/share/ansible

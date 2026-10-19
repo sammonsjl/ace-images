@@ -16,7 +16,8 @@ dependencies:
   ansible_runner:
     package_pip: ansible-runner
   galaxy: requirements.yml
-  python: requirements.in
+  # The complete pinned list (lock-post.sh), installed with --no-deps.
+  python: requirements-full.in
   system: bindep.txt
   # The collection asks for psycopg's binary wheel (no sdist exists to build
   # it from) and systemd-python; the vendor image carries neither, and builds
@@ -33,6 +34,12 @@ options:
     package_pip: ""
 
 additional_build_steps:
+  # requirements-full.in is complete, so pip resolves nothing: see lock-post.sh.
+  # An ARG, not an ENV, so it does not stay in the image.
+  prepend_builder:
+    - ARG PIP_OPTS=--no-deps
+  prepend_final:
+    - ARG PIP_OPTS=--no-deps
   prepend_base:
     - RUN $PKGMGR install --nodocs -y gcc gcc-c++ python3.12-devel libffi-devel openssl-devel rust cargo && $PKGMGR clean all
   append_final:

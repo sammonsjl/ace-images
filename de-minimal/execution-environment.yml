@@ -18,7 +18,8 @@ dependencies:
     package_pip: ansible-core
   ansible_runner:
     package_pip: ansible-runner
-  python: requirements.in
+  # The complete pinned list (lock-post.sh), installed with --no-deps.
+  python: requirements-full.in
   system: bindep.txt
 
 options:
@@ -27,6 +28,12 @@ options:
     package_pip: dumb-init==1.2.5.post1
 
 additional_build_steps:
+  # requirements-full.in is complete, so pip resolves nothing: see lock-post.sh.
+  # An ARG, not an ENV, so it does not stay in the image.
+  prepend_builder:
+    - ARG PIP_OPTS=--no-deps
+  prepend_final:
+    - ARG PIP_OPTS=--no-deps
   # Hermetic builds have only sdists, so the base stage's own install of
   # ansible-core and ansible-runner compiles C; the base stage never reaches
   # the final image (hack/ee-create.sh).

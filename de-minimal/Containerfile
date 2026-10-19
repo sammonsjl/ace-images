@@ -40,6 +40,7 @@ ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
 RUN $PYCMD -m pip install --no-cache-dir bindep pyyaml packaging
+ARG PIP_OPTS=--no-deps
 COPY _build/requirements.txt requirements.txt
 COPY _build/bindep.txt bindep.txt
 RUN $PYCMD /output/scripts/introspect.py introspect --user-pip=requirements.txt --user-bindep=bindep.txt --write-bindep=/tmp/src/bindep.txt --write-pip=/tmp/src/requirements.txt
@@ -57,6 +58,7 @@ ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
 ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
+ARG PIP_OPTS=--no-deps
 RUN /output/scripts/check_ansible $PYCMD
 COPY --from=builder /output/ /output/
 RUN /output/scripts/install-from-bindep && rm -rf /output/wheels
