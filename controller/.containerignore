@@ -1,0 +1,5 @@
+src/.git
+django-ansible-base/.git
+awx-plugins/.git
+awx-plugins-interfaces/.git
+system-certifi/.git

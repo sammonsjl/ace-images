@@ -1,0 +1,5 @@
+# Build requirements pybuild-deps does not report: maturin's conditional
+# puccinialin, and the Cython pin aio-libs (propcache, frozenlist) ask for from
+# their in-tree build backends. Found with hack/record-build-deps.sh.
+puccinialin<0.2,>=0.1
+Cython==3.1.8

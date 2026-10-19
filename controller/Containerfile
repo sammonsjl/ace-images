@@ -1,175 +1,140 @@
-# ACE controller — AWX, built from upstream source.
+# ACE controller: AWX (src/, at the public commit nearest the vendor's 4.8.6)
+# built the way controller-rhel9 (AAP 2.7) is built. Hermetic:
+# hack/prefetch.sh controller, then hack/build.sh controller.
 #
-# No usable public build of this exists: quay.io/ansible/awx is frozen at
-# 24.6.1 (Jul 2024), which predates the gateway / django-ansible-base
-# resource-server integration this platform depends on, and the vendor's own
-# image is private. So we build it.
-#
-# AWX ships no plain Containerfile — it ships a Jinja template rendered by
-# `make Dockerfile`. This file reproduces the end state of that template's
-# production branch, using AWX's own make targets for the parts that are
-# genuinely its build system (make ui, make requirements_awx, make sdist) and
-# hand-written configs for everything else.
-
-ARG AWX_REF=94333d005e22acdf35706f289981af8da711a943                # ansible/awx devel @ 2026-09-10
-ARG AWX_VERSION=25.0.0
-ARG PYTHON=python3.12
+#   venv    /var/lib/awx/venv/awx, built in full from sdists the way AWX's own
+#           Makefile does it offline (requirements_awx with --no-index), plus
+#           what AWX takes from git, built from submodules
+#   final   ubi9-minimal; the vendor's final stage, step for step (NOTES.md).
+#           The venv arrives whole, as the vendor's does.
 
 ###############################################################################
-# Stage 1 — source at a pinned commit
+# Builder: the venv. PIP_NO_INDEX/PIP_FIND_LINKS come from the prefetch.
 ###############################################################################
-FROM quay.io/centos/centos:stream9 AS awx-src
-ARG AWX_REF
-RUN dnf install -y git && dnf clean all
-WORKDIR /src
-RUN git clone https://github.com/ansible/awx.git . && git checkout "${AWX_REF}"
-
-###############################################################################
-# Stage 2 — the UI. Node exists only here.
-###############################################################################
-FROM quay.io/centos/centos:stream9 AS ui-builder
-RUN dnf -y module enable nodejs:18 && dnf -y module install nodejs:18/common && \
-    dnf install -y make git && dnf clean all
-COPY --from=awx-src /src /tmp/src
-WORKDIR /tmp/src
-RUN NODE_OPTIONS=--max-old-space-size=6144 make ui
-
-###############################################################################
-# Stage 3 — the virtualenv and the sdist
-###############################################################################
-FROM quay.io/centos/centos:stream9 AS builder
-ARG PYTHON
-ARG AWX_VERSION
-
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
-ENV AWX_LOGGING_MODE=stdout
-
-RUN dnf -y install 'dnf-command(config-manager)' && dnf config-manager --set-enabled crb && \
-    dnf -y install \
-      openssh-clients iputils gcc gcc-c++ git-core gettext glibc-langpack-en \
-      libffi-devel libtool-ltdl-devel make nss openldap-devel patch \
-      postgresql postgresql-devel \
-      "${PYTHON}" "${PYTHON}-devel" "${PYTHON}-pip" "${PYTHON}-setuptools" \
-      "${PYTHON}-packaging" "${PYTHON}-psycopg2" swig unzip \
-      xmlsec1-devel xmlsec1-openssl-devel && \
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS venv
+RUN dnf module enable -y postgresql:15 && \
+    dnf install -y --nodocs python3.12 python3.12-devel gcc gcc-c++ make pkgconf-pkg-config \
+      libpq-devel krb5-devel libffi-devel openssl-devel libxml2-devel libxslt-devel \
+      xmlsec1-devel xmlsec1-openssl-devel libtool-ltdl-devel openldap-devel rust cargo && \
     dnf clean all
-
-RUN pip3.12 install build
-
-COPY --from=awx-src /src/Makefile /tmp/Makefile
-COPY --from=awx-src /src/requirements /tmp/requirements
-RUN cd /tmp && make requirements_awx
-
-COPY --from=awx-src   /src               /tmp/src
-COPY --from=ui-builder /tmp/src/awx/ui/build /tmp/src/awx/ui/build
-WORKDIR /tmp/src
-
-ENV SETUPTOOLS_SCM_PRETEND_VERSION=${AWX_VERSION}
-ENV VERSION=${AWX_VERSION}
-RUN make sdist && /var/lib/awx/venv/awx/bin/pip install dist/awx.tar.gz
-
-# awx-operator writes /etc/tower/settings.py containing
-#   from django_auth_ldap.config import *
-# and AWX's own requirements do not declare django-auth-ldap, so an image built
-# purely from them cannot load AWX's settings under that operator: uwsgi exits
-# with ModuleNotFoundError and the web pod never becomes ready. The upstream
-# awx image carries it; so must this one.
-RUN /var/lib/awx/venv/awx/bin/pip install --no-cache-dir django-auth-ldap
-
-RUN AWX_MODE=defaults \
-    SKIP_SECRET_KEY_CHECK=yes \
-    SKIP_PG_VERSION_CHECK=yes \
-    AWX_SKIP_CREDENTIAL_TYPES_DISCOVER=yes \
-    /var/lib/awx/venv/awx/bin/awx-manage collectstatic --noinput --clear
+COPY requirements.txt /tmp/requirements.txt
+COPY src/ /src/awx/
+COPY django-ansible-base/ /src/django-ansible-base/
+COPY awx-plugins/ /src/awx-plugins/
+COPY awx-plugins-interfaces/ /src/awx-plugins-interfaces/
+COPY system-certifi/ /src/system-certifi/
+# None of the submodules has its .git, so setuptools-scm is told each version.
+RUN python3.12 -m venv /var/lib/awx/venv/awx && \
+    /var/lib/awx/venv/awx/bin/pip install --no-cache-dir -r /tmp/requirements.txt && \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AWX_PLUGINS_INTERFACES=0.0.1a6 \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AWX_PLUGINS_CORE=0.1.dev0 \
+      /var/lib/awx/venv/awx/bin/pip install --no-cache-dir --no-deps \
+        /src/django-ansible-base /src/awx-plugins-interfaces /src/awx-plugins /src/system-certifi && \
+    SETUPTOOLS_SCM_PRETEND_VERSION=4.8.6 \
+      /var/lib/awx/venv/awx/bin/pip install --no-cache-dir --no-deps /src/awx
 
 ###############################################################################
-# Stage 4 — the runtime. No compilers, no node.
+# Final stage
 ###############################################################################
-FROM quay.io/centos/centos:stream9
-ARG PYTHON
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 
+ARG AWX_GIT_TAG=4.8.6
+ENV AWX_GIT_TAG=${AWX_GIT_TAG:-}
+ENV container=oci
+ENV HOME="/var/lib/awx"
+ENV XDG_CONFIG_HOME="/tmp/.config"
+USER root
 ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 ENV AWX_LOGGING_MODE=stdout
-ENV container=oci
 
-ADD https://copr.fedorainfracloud.org/coprs/ansible/Rsyslog/repo/epel-9/ansible-Rsyslog-epel-9.repo \
-    /etc/yum.repos.d/ansible-Rsyslog-epel-9.repo
+# The vendor's list, less c-ares and redis (neither is in UBI; grpcio carries
+# its own c-ares, and redis runs in a container of its own).
+RUN microdnf -y module enable 'nginx:1.24' 'postgresql:15' && \
+    microdnf update --setopt=install_weak_deps=0 --nodocs -y && \
+    microdnf install --setopt=install_weak_deps=0 --nodocs -y \
+      glibc-langpack-en python3.12 python3.12-pyyaml python3.12-pip hostname \
+      krb5-workstation nginx postgresql xmlsec1 xmlsec1-openssl git-core crontabs sshpass \
+      git-lfs subscription-manager subversion sos rsync rsyslog crun zlib openldap \
+      python3-libsemanage findutils podman-remote && \
+    microdnf reinstall --setopt=install_weak_deps=0 --nodocs -y tzdata && \
+    microdnf clean all
 
-RUN dnf -y install 'dnf-command(config-manager)' && dnf config-manager --set-enabled crb && \
-    dnf -y module install nginx:1.24/common && \
-    dnf -y install \
-      acl git-core git-lfs glibc-langpack-en krb5-workstation postgresql \
-      "${PYTHON}" "${PYTHON}-devel" "${PYTHON}-pip" "${PYTHON}-setuptools" \
-      "${PYTHON}-packaging" "${PYTHON}-psycopg2" \
-      openldap rsync rsyslog subversion sudo vim-minimal which unzip \
-      xmlsec1-openssl && \
-    dnf -y clean all
+RUN groupadd -r awx && useradd -r -g awx -d /var/lib/awx -s /bin/bash awx && usermod -g root awx
 
-RUN pip3.12 install virtualenv supervisor dumb-init build && \
-    rm -rf /root/.cache /tmp/*
+COPY --from=venv /var/lib/awx/venv /var/lib/awx/venv
 
-# NOTE: no receptor binary here. AWX's upstream Dockerfile copies one in for its
-# development image, but the vendor's controller image does not contain it — only
-# receptorctl and ansible-runner, both of which arrive with the venv. receptor
-# runs in its own container (Lab 7); the controller only talks to its socket.
+# PID 1 and the process manager come from the venv.
+RUN ln -s /var/lib/awx/venv/awx/bin/dumb-init /usr/bin/dumb-init && \
+    ln -s /var/lib/awx/venv/awx/bin/supervisord /usr/bin/supervisord && \
+    ln -s /var/lib/awx/venv/awx/bin/supervisorctl /usr/bin/supervisorctl
+RUN /var/lib/awx/venv/awx/bin/pip show awx | grep Version | cut -d " " -f 2 > /var/lib/awx/.tower_version
+# What the venv needed only to build itself (AWX's
+# requirements_tower_uninstall list, and then some).
+RUN /var/lib/awx/venv/awx/bin/pip uninstall -y Cython hatchling maturin pathspec pluggy \
+      semantic-version setuptools-rust setuptools-scm trove-classifiers wheel
+RUN chmod g+w /etc/passwd
+RUN mkdir -p /usr/share/awx /var/lib/awx/job_status /var/lib/awx/public/static/media \
+             /var/lib/awx/venv/awx/lib64/python3.12/site-packages/awx/ui/build/static && \
+    chown -R awx:awx /var/lib/awx && \
+    mkdir -p /etc/tower && chgrp -R root /etc/tower && chmod -R g+w /etc/tower && \
+    mkdir -p /var/log/tower && chown -R awx:awx /var/log/tower && \
+    chgrp -R root /var/log/tower && chmod -R 770 /var/log/tower
+RUN mkdir -p /var/run/supervisor && chown -R awx:awx /var/run/supervisor && \
+    chgrp -R root /var/run/supervisor && chmod -R 770 /var/run/supervisor
+RUN chmod -R 777 /var/log/nginx && chmod -R 777 /var/lib/nginx && \
+    mkdir -p /var/run/tower && chown -R nginx:nginx /var/run/tower
 
-COPY --from=builder /var/lib/awx /var/lib/awx
-RUN ln -s /var/lib/awx/venv/awx/bin/awx-manage /usr/bin/awx-manage
+COPY src/tools/ansible/roles/dockerfile/files/rsyslog.conf /var/lib/awx/rsyslog/rsyslog.conf
+RUN mkdir -p /var/lib/awx/rsyslog /var/lib/awx/rsyslog/conf.d && \
+    chown awx:root /var/lib/awx/rsyslog/rsyslog.conf && chmod 660 /var/lib/awx/rsyslog/rsyslog.conf && \
+    mkdir -p /var/run/awx-rsyslog && chown -R awx:root /var/run/awx-rsyslog && \
+    chmod -R 770 /var/run/awx-rsyslog
+RUN mkdir -p /etc/receptor && chown -R awx:awx /etc/receptor && \
+    chgrp -R root /etc/receptor && chmod -R 755 /etc/receptor
+# Image names must be fully qualified: no short-name guessing at job time.
+RUN mkdir -p /etc/containers/registries.conf.d/ && \
+    echo "unqualified-search-registries = []" >> /etc/containers/registries.conf.d/force-fully-qualified-images.conf && \
+    chmod 644 /etc/containers/registries.conf.d/force-fully-qualified-images.conf
+RUN find /var/lib/awx -not -path '/var/lib/awx/venv*' | xargs chgrp root && \
+    find /var/lib/awx -not -path '/var/lib/awx/venv*' | xargs chmod g+rw
 
-# Scripts AWX genuinely owns — these are its runtime contract, not config.
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/rsyslog.conf          /var/lib/awx/rsyslog/rsyslog.conf
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/wait-for-migrations   /usr/local/bin/wait-for-migrations
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/stop-supervisor       /usr/local/bin/stop-supervisor
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/uwsgi.ini             /etc/tower/uwsgi.ini
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/launch_awx_web.sh     /usr/bin/launch_awx_web.sh
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/launch_awx_task.sh    /usr/bin/launch_awx_task.sh
-COPY --from=awx-src /src/tools/ansible/roles/dockerfile/files/launch_awx_rsyslog.sh /usr/bin/launch_awx_rsyslog.sh
-COPY --from=awx-src /src/tools/scripts/rsyslog-4xx-recovery                         /usr/bin/rsyslog-4xx-recovery
-COPY --from=awx-src /src/tools/scripts/awx-python                                   /usr/bin/awx-python
+# Command-line entry points into the venv, and their historical tower-* names.
+RUN printf '%s\n' '#!/var/lib/awx/venv/awx/bin/python' 'import sys' 'from awx import manage' \
+      'if __name__ == "__main__":' '    manage()' > /usr/bin/awx-manage && chmod +x /usr/bin/awx-manage
+RUN printf '%s\n' '#!/bin/bash' 'exec /var/lib/awx/venv/awx/bin/python "$@"' > /usr/bin/awx-python && \
+    chmod +x /usr/bin/awx-python
+RUN ln -s /usr/bin/awx-python /usr/bin/tower-python && ln -s /usr/bin/awx-manage /usr/bin/tower-manage
 
-# Supervisor configs, written by hand. AWX ships these as Jinja templates that
-# only `make Dockerfile` renders; these are the production branch of each,
-# written out rather than generated.
-COPY supervisord_web.conf     /etc/supervisord_web.conf
-COPY supervisord_task.conf    /etc/supervisord_task.conf
+COPY src/tools/ansible/roles/dockerfile/files/uwsgi.ini /etc/tower/uwsgi.ini
+COPY supervisord_task.conf /etc/supervisord_task.conf
+COPY supervisord_web.conf /etc/supervisord_web.conf
 COPY supervisord_rsyslog.conf /etc/supervisord_rsyslog.conf
+COPY src/tools/ansible/roles/dockerfile/files/launch_awx_web.sh /usr/bin/launch_awx_web.sh
+COPY src/tools/ansible/roles/dockerfile/files/launch_awx_task.sh /usr/bin/launch_awx_task.sh
+COPY src/tools/ansible/roles/dockerfile/files/launch_awx_rsyslog.sh /usr/bin/launch_awx_rsyslog.sh
+COPY src/tools/scripts/rsyslog-4xx-recovery /usr/bin/rsyslog-4xx-recovery
+COPY src/tools/ansible/roles/dockerfile/files/stop-supervisor /usr/local/bin/stop-supervisor
+COPY src/tools/ansible/roles/dockerfile/files/wait-for-migrations /usr/bin/wait-for-migrations
+RUN chmod +rx /usr/bin/launch_awx_web.sh /usr/bin/launch_awx_task.sh /usr/bin/launch_awx_rsyslog.sh \
+      /usr/bin/wait-for-migrations /usr/local/bin/stop-supervisor /usr/bin/rsyslog-4xx-recovery
+RUN rm -rf /var/cache/dnf
 
-RUN chmod +x /usr/local/bin/wait-for-migrations /usr/local/bin/stop-supervisor \
-             /usr/bin/launch_awx_web.sh /usr/bin/launch_awx_task.sh \
-             /usr/bin/launch_awx_rsyslog.sh /usr/bin/rsyslog-4xx-recovery /usr/bin/awx-python
-
-RUN for dir in \
-      /var/lib/awx /var/lib/awx/rsyslog /var/lib/awx/rsyslog/conf.d \
-      /var/lib/awx/.local/share/containers/storage \
-      /var/run/awx-rsyslog /var/log/nginx /var/lib/pgsql \
-      /var/run/supervisor /var/run/awx-receptor /var/lib/nginx \
-      /etc/tower /etc/tower/conf.d ; \
-    do mkdir -m 0775 -p $dir ; chmod g+rwx $dir ; chgrp root $dir ; done && \
-    for file in \
-      /etc/subuid /etc/subgid /etc/group /etc/passwd \
-      /var/lib/awx/rsyslog/rsyslog.conf ; \
-    do touch $file ; chmod g+rw $file ; chgrp root $file ; done
-
-RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
-    ln -sf /dev/stderr /var/log/nginx/error.log
-
-# A NAMED service user, not a bare uid. launch_awx_web.sh appends an `awx` line
-# to /etc/passwd when it runs as uid >= 500 precisely because the name has to
-# resolve; creating it here is what the vendor's image does.
-RUN useradd -u 1000 -g 0 -d /var/lib/awx -M -s /bin/bash awx 2>/dev/null || true
-
-ENV HOME="/var/lib/awx"
-# XDG_CONFIG_HOME points at /tmp because $HOME is not writable at runtime for
-# everything that wants to scribble a config there.
-ENV XDG_CONFIG_HOME=/tmp/.config
+ENV DESCRIPTION="ACE controller: AWX, the automation controller"
+LABEL name="ace-controller" \
+      version="${AWX_GIT_TAG}" \
+      summary="${DESCRIPTION}" \
+      description="${DESCRIPTION}" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.k8s.display-name="ACE controller" \
+      io.openshift.tags="ace,automation,controller,awx" \
+      maintainer="Jamie Sammons"
 
 USER awx
 WORKDIR /var/lib/awx
 EXPOSE 8052
-ENTRYPOINT ["dumb-init", "--"]
-VOLUME /var/lib/nginx
-VOLUME /var/lib/awx/.local/share/containers
+RUN AWX_MODE=defaults SKIP_SECRET_KEY_CHECK=yes SKIP_PG_VERSION_CHECK=yes \
+    AWX_SKIP_CREDENTIAL_TYPES_DISCOVER=yes /usr/bin/awx-manage collectstatic --noinput --clear
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]

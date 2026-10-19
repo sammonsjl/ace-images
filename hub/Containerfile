@@ -1,104 +1,94 @@
-# ACE hub — galaxy_ng on pulpcore, built from upstream source.
+# ACE hub: galaxy_ng (src/, at the public commit nearest the vendor's 4.12.5)
+# on pulpcore, built the way hub-rhel9 (AAP 2.7) is built. Hermetic:
+# hack/prefetch.sh hub, then hack/build.sh hub.
 #
-# Why built rather than pulled: quay.io/ansible/galaxy-ng is amd64-only and
-# pulp/pulp-galaxy-ng is abandoned. The base is pulp's own multi-arch image;
-# galaxy_ng comes from its upstream repo (Apache-2.0) at a pinned ref, and pip
-# resolves the matching pulpcore / pulp_ansible / pulp-container pins from
-# galaxy_ng's own setup.py.
-#
-# The image carries no configuration. The quadlets mount settings.py and the key
-# material, and each container picks its process:
-#   pulpcore-api / pulpcore-content / pulpcore-worker / pulpcore-manager
+#   wheels  every Python package from its sdist, plus galaxy_ng,
+#           django-ansible-base and system-certifi from their submodules
+#   final   ubi9-minimal; the vendor's final stage, step for step (NOTES.md).
+#           Like galaxy_ng's own Dockerfile, which it follows: one install
+#           list, the system interpreter, a galaxy user, entrypoint.sh.
 
-# Pinned, because :latest moves daily. 3.117 is CentOS Stream 10 with Python
-# 3.12 — and the Python floor is what decides this, not the pulpcore version:
-# galaxy_ng's lockfile pins ansible-core==2.21.0, which requires >=3.12. The
-# 3.105 line is Stream 9 on Python 3.11 and cannot satisfy it.
-#
-# The base ships pulpcore 3.117; the constraints below pull it back to the
-# 3.105.x that galaxy_ng actually wants. The base supplies the platform and
-# the interpreter, the lockfile supplies the versions.
-FROM docker.io/pulp/base:3.117
+###############################################################################
+# Builder: wheels. PIP_NO_INDEX/PIP_FIND_LINKS come from the prefetch.
+###############################################################################
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS wheels
+RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc gcc-c++ make \
+      pkgconf-pkg-config libpq-devel openldap-devel libjpeg-turbo-devel zlib-devel \
+      libxml2-devel libxslt-devel libffi-devel openssl-devel libyaml-devel rust cargo && \
+    dnf clean all
+COPY requirements.txt requirements.out /tmp/
+COPY src/ /src/galaxy_ng/
+COPY django-ansible-base/ /src/django-ansible-base/
+COPY system-certifi/ /src/system-certifi/
+# galaxy_ng's setup.py fetches the legacy hub UI from GitHub unless its target
+# directory exists. The console is the gateway's now, so it stays empty.
+RUN mkdir -p /src/galaxy_ng/galaxy_ng/app/static/galaxy_ng && \
+    python3.12 -m pip wheel --no-cache-dir --wheel-dir /output/wheels -r /tmp/requirements.txt && \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
+      python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /output/wheels \
+        /src/django-ansible-base /src/galaxy_ng /src/system-certifi && \
+    cp /tmp/requirements.out /output/wheels/requirements.out
 
-ARG GALAXY_NG_REF=1f2b27c70398aef9976188ecd23bbb750213befb          # ansible/galaxy_ng main @ 2026-08-27
-ARG DAB_REF=3a099ee5fc4322397c79afcaf7dd1e045e2dc90c                # ansible/django-ansible-base devel @ 2026-09-10
+###############################################################################
+# Final stage
+###############################################################################
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 
-ADD https://raw.githubusercontent.com/ansible/galaxy_ng/${GALAXY_NG_REF}/requirements/requirements.common.txt /tmp/galaxy-lock.txt
-
-# galaxy_ng's own pip-compile lockfile, used as constraints.
-#
-# Without it pip backtracks: galaxy_ng's setup.py declares loose ranges and the
-# resolver explores them for a very long time without failing. Constraining
-# every version to the set galaxy_ng itself pinned turns resolution into a
-# lookup.
-#
-# Two things have to be filtered out before pip will accept it:
-#   1. Extras — pip refuses a constraints file whose entries carry them
-#      ("Constraints cannot have extras"), and a pip-compile lockfile is full
-#      of them. The version pin is the point; the extras are not.
-#   2. Direct git references — a constraint must be a name and a version
-#      specifier, and the lockfile pins django-ansible-base to a git ref. That
-#      is also the one dependency we deliberately override below, so dropping
-#      it here is exactly right.
-RUN sed -E 's/\[[^]]*\]//' /tmp/galaxy-lock.txt | grep -v '@ git+' > /tmp/galaxy-constraints.txt
-
-RUN pip3 install --no-cache-dir -c /tmp/galaxy-constraints.txt \
-      "galaxy-ng @ https://github.com/ansible/galaxy_ng/archive/${GALAXY_NG_REF}.tar.gz"
-
-# django-ansible-base must match the gateway's. The gateway builds against DAB
-# devel, whose JWTs no longer carry a claim the pinned version still expects —
-# so hub would reject every token the gateway signs.
-ENV DJANGO_ANSIBLE_BASE_BRANCH=devel
-# DAB_REF defaults to devel resolved to a commit, so a one-off hub build is
-# reproducible. build-all overrides it with the same DAB commit it gives the gateway.
-# Re-check galaxy_ng's setup.py against this ref whenever GALAXY_NG_REF moves.
-RUN pip3 install --no-cache-dir --upgrade \
-      "django-ansible-base[feature-flags,jwt-consumer] @ git+https://github.com/ansible/django-ansible-base@${DAB_REF}"
-
-ENV PULP_SETTINGS=/etc/pulp/settings.py \
+ARG GALAXY_NG_GIT_TAG=4.12.0dev
+ENV LANG=en_US.UTF-8 \
     DJANGO_SETTINGS_MODULE=pulpcore.app.settings \
-    LANG=en_US.UTF-8 \
-    container=oci \
-    PYTHONUNBUFFERED=1
+    PULP_SETTINGS=/etc/pulp/settings.py \
+    PYTHONUNBUFFERED=1 \
+    AWS_REQUEST_CHECKSUM_CALCULATION=when_required \
+    AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 
-# Static assets baked at build time; whitenoise serves them. Group-root
-# permissions so the image works at whatever uid it is given.
-RUN mkdir -p /var/lib/operator/static /etc/pulp/keys /var/lib/pulp /var/tmp/pulp && \
-    PULP_SECRET_KEY=build-only \
-    PULP_CONTENT_ORIGIN=http://localhost \
-    PULP_STATIC_ROOT=/var/lib/operator/static/ \
-    PULP_DB_ENCRYPTION_KEY=/dev/null \
-    PULP_REDIRECT_TO_OBJECT_STORAGE=False \
-    pulpcore-manager collectstatic --noinput && \
-    chgrp -R root /var/lib/operator/static /etc/pulp /var/lib/pulp /var/tmp/pulp && \
-    chmod -R g=u /var/lib/operator/static /etc/pulp /var/lib/pulp /var/tmp/pulp
+# The vendor's list, less c-ares (not in UBI).
+RUN INSTALL_PKGS="glibc-langpack-en git-core libjpeg-turbo libpq libyaml libxslt python3.12 python3.12-pip gettext skopeo diffutils jq pinentry sshpass tar yajl" && \
+    microdnf --setopt=install_weak_deps=0 --nodocs -y install ${INSTALL_PKGS} && \
+    microdnf --setopt=install_weak_deps=0 --nodocs -y reinstall tzdata && \
+    microdnf clean all && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3
 
-# A named user, and PYTHONUNBUFFERED=1 — the pulp/base image sets it to 0, which
-# means pulpcore's output sits in a buffer instead of reaching the journal. That
-# is a debugging tax you pay every time a worker misbehaves.
-RUN useradd -u 1000 -g 0 -d /var/lib/pulp -M -s /bin/bash galaxy 2>/dev/null || true
+COPY --from=wheels /output/wheels /output/wheels
 
-# galaxy-operator starts each hub tier by the names and ports the official
-# galaxy-ng image uses, and this image is built to take its process as the
-# container command instead — which the podman track relies on. Under that
-# operator the pods die immediately with "start-api: not found".
-#
-# Delegating to pulp/base's pulp-api is not enough: it binds 24817, while the
-# operator's probes and containerPort say 8000 for the api and 24816 for
-# content. So these bind what the operator expects. The waiters are aliases
-# onto pulp/base's equivalents, which is all the originals do.
-RUN set -eu; \
-    printf '#!/bin/sh\n/usr/bin/wait_on_postgres.py\n/usr/bin/wait_on_database_migrations.sh\nexec pulpcore-api --bind "[::]:8000" --name pulp-api --access-logfile - "$@"\n' \
-      > /usr/bin/start-api; \
-    printf '#!/bin/sh\n/usr/bin/wait_on_postgres.py\n/usr/bin/wait_on_database_migrations.sh\nexec pulpcore-content --bind "[::]:24816" --name pulp-content --access-logfile - "$@"\n' \
-      > /usr/bin/start-content-app; \
-    cp /usr/bin/start-content-app /usr/bin/start-content; \
-    printf '#!/bin/sh\n/usr/bin/wait_on_postgres.py\n/usr/bin/wait_on_database_migrations.sh\nexec pulpcore-worker "$@"\n' \
-      > /usr/bin/start-worker; \
-    printf '#!/bin/sh\nexec /usr/bin/wait_on_database_migrations.sh "$@"\n' > /usr/bin/wait-for-migrations; \
-    printf '#!/bin/sh\nexec /usr/bin/wait_on_postgres.py "$@"\n' > /usr/bin/wait-for-postgres; \
-    chmod +x /usr/bin/start-api /usr/bin/start-content-app /usr/bin/start-content \
-             /usr/bin/start-worker /usr/bin/wait-for-migrations /usr/bin/wait-for-postgres
+# Into the system interpreter, every pin with --no-deps, then the three
+# packages built from submodules.
+RUN python3.12 -m pip install --prefix /usr --no-cache-dir --no-index --no-deps \
+      --find-links /output/wheels -r /output/wheels/requirements.out && \
+    python3.12 -m pip install --prefix /usr --no-cache-dir --no-index --no-deps \
+      --find-links /output/wheels certifi django-ansible-base galaxy_ng && \
+    rm -rf /output/wheels
+
+# The galaxy user, in group root, with a subordinate id range for the podman
+# the container registry part of pulp may run; pulp's directories; the static
+# files the operator's nginx serves.
+RUN adduser --uid 1000 --gid 0 --home-dir /var/lib/pulp --no-create-home galaxy && \
+    usermod --add-subuids 100000-165535 --add-subgids 100000-165535 galaxy && \
+    install -dm 0775 -o galaxy /var/lib/operator/static /var/lib/pulp/artifact \
+      /var/lib/pulp/assets /var/lib/pulp/media /var/lib/pulp/scripts /var/lib/pulp/tmp \
+      /etc/pulp/certs /etc/pulp/keys && \
+    PULP_STATIC_ROOT=/var/lib/operator/static/ PULP_CONTENT_ORIGIN=localhost \
+      pulpcore-manager collectstatic --clear --noinput --link
+
+COPY src/galaxy-operator/bin/readyz.py /usr/bin/readyz.py
+COPY src/docker/entrypoint.sh /usr/bin/entrypoint.sh
+COPY src/docker/bin/ /usr/local/bin/
+
+RUN chown galaxy:root -R /var/lib/pulp /var/lib/operator/static && \
+    chmod 2775 /var/lib/pulp/scripts /var/lib/pulp/media /var/lib/pulp/tmp /var/lib/pulp/assets && \
+    chown :root /var/lib/pulp/scripts /var/lib/pulp/media /var/lib/pulp/tmp /var/lib/pulp/assets && \
+    chmod +x /usr/bin/entrypoint.sh && chmod +x /usr/bin/readyz.py
+
+ENV DESCRIPTION="ACE hub: galaxy_ng on pulpcore, the automation content hub"
+LABEL name="ace-hub" \
+      version="${GALAXY_NG_GIT_TAG}" \
+      summary="${DESCRIPTION}" \
+      description="${DESCRIPTION}" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.k8s.display-name="ACE hub" \
+      io.openshift.tags="ace,automation,hub,galaxy" \
+      maintainer="Jamie Sammons"
 
 USER galaxy
-WORKDIR /
+ENTRYPOINT ["/usr/bin/entrypoint.sh"]

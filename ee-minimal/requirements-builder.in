@@ -1,0 +1,5 @@
+# What ansible-builder's builder stage pip-installs for itself before it can
+# introspect and assemble (bindep reads bindep.txt).
+bindep
+pyyaml
+packaging

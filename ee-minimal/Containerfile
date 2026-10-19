@@ -1,70 +1,78 @@
-# ACE minimal execution environment — where jobs actually run.
-#
-# An EE is not magic: it is a container image with ansible-core, ansible-runner
-# and whatever collections your playbooks import. `ansible-builder` exists to
-# generate a Containerfile like this one from an execution-environment.yml; we
-# write it out, because a generated file you never read teaches nothing.
-#
-# The ansible-core version pairs with the controller. The vendor tags its image
-# `ee-minimal-rhel9:2.16` — the tag IS the core version — because it ships
-# automation-controller 4.8.6. We track AWX devel, so we track a newer core.
-#
-# What makes it an EE rather than any image with ansible in it:
-#   - ansible-runner is present and on PATH — receptor invokes it
-#   - /runner exists and is writable, because that is where ansible-runner
-#     stages the private data directory for each job
-#   - ansible-core lives in a venv on PATH, not in the system interpreter
+ARG EE_BASE_IMAGE="registry.access.redhat.com/ubi9/ubi-minimal:9.8"
+ARG PYCMD="/usr/bin/python3.12"
+ARG PYPKG="python3.12"
+ARG PKGMGR_PRESERVE_CACHE=""
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS=""
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS=""
+ARG ANSIBLE_INSTALL_REFS="ansible-core ansible-runner"
+ARG PKGMGR="/usr/bin/microdnf"
 
-ARG ANSIBLE_CORE_VERSION=2.17.14
-ARG RECEPTOR_REF=f9be10658742c64ce639518e0112cdf416f46159   # ansible/receptor devel @ 2026-09-10
-ARG GO_VERSION=1.25
-ARG ANSIBLE_RUNNER_VERSION=2.4.3
+# Base build stage
+FROM $EE_BASE_IMAGE AS base
+USER root
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ARG EE_BASE_IMAGE
+ARG PYCMD
+ARG PYPKG
+ARG PKGMGR_PRESERVE_CACHE
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
+ARG ANSIBLE_INSTALL_REFS
+ARG PKGMGR
 
-###############################################################################
-# Stage 0 — the receptor binary.
-#
-# On Kubernetes, awx-operator uses ONE image for two jobs: the sidecar it starts
-# with `receptor` as the command, and the control-plane execution environment
-# that project updates run in. That second role needs git and ansible-playbook,
-# the first needs receptor, and upstream's awx-ee carries all of them. So this
-# image does too — built here rather than copied from a published tag, so it
-# stays reproducible from source.
-###############################################################################
-FROM docker.io/library/golang:${GO_VERSION} AS receptor-build
-ARG RECEPTOR_REF
-RUN git clone https://github.com/ansible/receptor.git /src && \
-    cd /src && git checkout "${RECEPTOR_REF}" && \
-    CGO_ENABLED=0 GOFLAGS="-buildvcs=false" go build -o /out/receptor ./cmd/receptor-cl
+COPY _build/scripts/ /output/scripts/
+COPY _build/scripts/entrypoint /opt/builder/bin/entrypoint
+RUN $PKGMGR install --nodocs -y gcc python3.12-devel krb5-devel libffi-devel openssl-devel rust cargo && $PKGMGR clean all
+RUN $PKGMGR install $PYPKG -y ; if [ -z $PKGMGR_PRESERVE_CACHE ]; then $PKGMGR clean all; fi
+RUN /output/scripts/pip_install $PYCMD
 
+# Builder build stage
+FROM base AS builder
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+WORKDIR /build
+ARG EE_BASE_IMAGE
+ARG PYCMD
+ARG PYPKG
+ARG PKGMGR_PRESERVE_CACHE
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
+ARG ANSIBLE_INSTALL_REFS
+ARG PKGMGR
 
-FROM quay.io/centos/centos:stream9
+RUN $PYCMD -m pip install --no-cache-dir bindep pyyaml packaging
+COPY _build/requirements.txt requirements.txt
+COPY _build/bindep.txt bindep.txt
+RUN $PYCMD /output/scripts/introspect.py introspect --user-pip=requirements.txt --user-bindep=bindep.txt --write-bindep=/tmp/src/bindep.txt --write-pip=/tmp/src/requirements.txt
+RUN /output/scripts/assemble
 
-ARG ANSIBLE_CORE_VERSION
-ARG ANSIBLE_RUNNER_VERSION
+# Final build stage
+FROM $EE_BASE_IMAGE AS final
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ARG EE_BASE_IMAGE
+ARG PYCMD
+ARG PYPKG
+ARG PKGMGR_PRESERVE_CACHE
+ARG ANSIBLE_GALAXY_CLI_COLLECTION_OPTS
+ARG ANSIBLE_GALAXY_CLI_ROLE_OPTS
+ARG ANSIBLE_INSTALL_REFS
+ARG PKGMGR
 
-RUN dnf install -y python3.12 python3.12-pip git openssh-clients rsync && \
-    dnf clean all
-
-RUN pip3.12 install --no-cache-dir \
-      "ansible-core==${ANSIBLE_CORE_VERSION}" \
-      "ansible-runner==${ANSIBLE_RUNNER_VERSION}"
-
-RUN mkdir -p /runner /runner/project /runner/artifacts /runner/inventory && \
-    chgrp -R 0 /runner && chmod -R g=u /runner
-
-ENV HOME=/runner
+COPY --from=builder /output/ /output/
+RUN /output/scripts/install-from-bindep && rm -rf /output/wheels
+RUN mkdir -p /runner && chgrp 0 /runner && chmod -R ug+rwx /runner
 WORKDIR /runner
-CMD ["ansible-runner", "worker"]
-
-# An execution environment runs as an arbitrary uid against a project
-# directory owned by someone else, so git's ownership guard refuses to touch
-# the checkout:
-#
-#   fatal: detected dubious ownership in repository at /var/lib/awx/projects/...
-#
-# The clone succeeds and the very next git command fails, which reads as a
-# broken remote rather than a permissions check. Trusting any directory is the
-# right call specifically here: the container is the boundary, not the uid.
+RUN for dir in /home/runner /home/runner/.ansible /home/runner/.ansible/tmp /runner /runner/env /runner/inventory /runner/project /runner/artifacts ; do mkdir -m 0775 -p $dir ; chmod -R g+rwx $dir ; chgrp -R root $dir ; done
+RUN alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+RUN alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.12 1
+RUN $PKGMGR reinstall --setopt=install_weak_deps=0 --nodocs -y tzdata && $PKGMGR clean all
+VOLUME /runner
+ENV HOME=/home/runner
+ADD _build/scripts/entrypoint /bin/entrypoint
+ENV DESCRIPTION="ACE minimal execution environment: ansible-core and ansible-runner, nothing else" container=oci
+LABEL name="ace-ee-minimal" summary="${DESCRIPTION}" description="${DESCRIPTION}" io.k8s.description="${DESCRIPTION}" io.k8s.display-name="ACE minimal execution environment" io.openshift.tags="ace,automation,execution-environment" maintainer="Jamie Sammons"
 RUN git config --system --add safe.directory '*'
-
-COPY --from=receptor-build /out/receptor /usr/bin/receptor
+RUN rm -rf /output
+LABEL ansible-execution-environment=true
+USER root
+ENTRYPOINT ["entrypoint"]
+CMD ["ansible-runner", "run", "/runner"]

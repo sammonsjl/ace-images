@@ -1,0 +1,4 @@
+# Build backends of what is built from submodules: galaxy_ng and system-certifi
+# (setuptools), django-ansible-base (setuptools + setuptools-scm).
+setuptools>=64
+setuptools-scm>=8

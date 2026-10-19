@@ -1,0 +1,26 @@
+# CentOS Stream 9, for the few build-time packages UBI does not carry (e.g.
+# xmlsec1-devel, to compile python-xmlsec). includepkgs limits each repo to
+# exactly those gaps, so everything UBI has still comes from UBI, and nothing
+# from here reaches a final image. Stream is the upstream of RHEL 9, so its
+# packages fit beside UBI's.
+
+[centos-stream9-baseos]
+name = CentOS Stream 9 - BaseOS
+baseurl = https://mirror.stream.centos.org/9-stream/BaseOS/$basearch/os/
+enabled = 1
+gpgcheck = 0
+includepkgs = xmlsec1 xmlsec1-devel xmlsec1-openssl xmlsec1-openssl-devel libtool-ltdl-devel
+
+[centos-stream9-appstream]
+name = CentOS Stream 9 - AppStream
+baseurl = https://mirror.stream.centos.org/9-stream/AppStream/$basearch/os/
+enabled = 1
+gpgcheck = 0
+includepkgs = xmlsec1 xmlsec1-devel xmlsec1-openssl xmlsec1-openssl-devel libtool-ltdl-devel
+
+[centos-stream9-crb]
+name = CentOS Stream 9 - CRB
+baseurl = https://mirror.stream.centos.org/9-stream/CRB/$basearch/os/
+enabled = 1
+gpgcheck = 0
+includepkgs = xmlsec1 xmlsec1-devel xmlsec1-openssl xmlsec1-openssl-devel libtool-ltdl-devel

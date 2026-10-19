@@ -1,0 +1,7 @@
+# Hermeto "generic" prefetch: files that are neither pip nor RPM packages.
+metadata:
+  version: "1.0"
+artifacts:
+  - download_url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/ansible-eda-2.13.0.tar.gz
+    checksum: sha256:8eb457d906bb7f062a0d814255b8d3b5c877c1b5eacd5c28a9aa7114646111c9
+    filename: ansible-eda-2.13.0.tar.gz

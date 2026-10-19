@@ -1,0 +1,6 @@
+[
+  {"type": "pip", "path": "hub",
+   "requirements_files": ["requirements.txt"],
+   "requirements_build_files": ["requirements-build.txt", "requirements-build-extra.txt"]},
+  {"type": "rpm", "path": "hub"}
+]

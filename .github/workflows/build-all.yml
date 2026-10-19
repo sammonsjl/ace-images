@@ -1,17 +1,14 @@
-# Rebuild every image from the LATEST upstream source. Manual only, and run it
-# whenever you want fresh images — it is expensive: the controller alone is a
-# four-stage build with an AWX console compile, and it runs twice (amd64 and
-# arm64). Expect build-all to be dominated by it.
+# Rebuild every image, from the pinned sources and lockfiles, under one tag.
+# Manual only. Each image is built hermetically (hack/prefetch.sh, then
+# hack/build.sh with no network), the way Konflux builds Red Hat's images, so
+# a run is reproducible: the same commit of this repo gives the same inputs.
 #
-# The Containerfiles pin a commit for each upstream, so a single image built on
-# its own is reproducible. build-all ignores those pins: `resolve` reads the
-# current head of every upstream branch once, and every image in the run is
-# built from those same commits. The run summary lists them, and each image
-# carries its own in the ace.source.ref label.
+# Fresh upstream code is not fetched here any more. To move an image forward,
+# bump its submodule (and/or its *.in files), run hack/lock.sh <image>, and
+# commit the new lockfiles; then run build-all.
 #
-# One run, one tag: every image gets <date>-r<run number>, plus :latest. The run
-# number makes the tag unique — building "latest" twice in a day produces two
-# different images, and they must never share a tag that consumers pin.
+# One run, one tag: every image gets <date>-r<run number> (plus :latest on
+# main). The run number keeps the tag unique.
 
 name: build-all
 
@@ -37,132 +34,68 @@ permissions:
   packages: write
 
 jobs:
-  resolve:
-    name: resolve upstream heads
+  tag:
+    name: tag this run
     runs-on: ubuntu-latest
     permissions: { contents: read }
     outputs:
-      tag:        ${{ steps.heads.outputs.tag }}
-      jewel:      ${{ steps.heads.outputs.jewel }}
-      ansible_ui: ${{ steps.heads.outputs.ansible_ui }}
-      awx:        ${{ steps.heads.outputs.awx }}
-      galaxy_ng:  ${{ steps.heads.outputs.galaxy_ng }}
-      eda:        ${{ steps.heads.outputs.eda }}
-      receptor:   ${{ steps.heads.outputs.receptor }}
-      dab:        ${{ steps.heads.outputs.dab }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - name: Read each upstream branch head
-        id: heads
+      - id: tag
         run: |
-          set -euo pipefail
-          # output-name  repo  branch
-          heads="
-          jewel       jewel               devel
-          ansible_ui  ansible-ui          devel
-          awx         awx                 devel
-          galaxy_ng   galaxy_ng           main
-          eda         eda-server          main
-          receptor    receptor            devel
-          dab         django-ansible-base devel
-          "
-          {
-            echo "### Upstream commits in this build"
-            echo
-            echo "| Upstream | Branch | Commit |"
-            echo "|---|---|---|"
-          } >> "$GITHUB_STEP_SUMMARY"
-          while read -r out repo branch; do
-            [ -n "$out" ] || continue
-            sha=$(git ls-remote "https://github.com/ansible/${repo}" "refs/heads/${branch}" | cut -f1)
-            # A missing or renamed branch must stop the run, not build an image
-            # from an empty ref.
-            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no head for ansible/${repo} ${branch}"; exit 1; }
-            echo "${out}=${sha}" >> "$GITHUB_OUTPUT"
-            echo "| ansible/${repo} | ${branch} | [\`${sha::12}\`](https://github.com/ansible/${repo}/commit/${sha}) |" >> "$GITHUB_STEP_SUMMARY"
-          done <<< "$heads"
           tag="$(date -u +%Y%m%d)-r${GITHUB_RUN_NUMBER}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          { echo; echo "**Tag:** \`${tag}\` (and \`latest\`)"; } >> "$GITHUB_STEP_SUMMARY"
+          echo "**Tag:** \`${tag}\`" >> "$GITHUB_STEP_SUMMARY"
 
-  gateway:
-    needs: resolve
-    uses: ./.github/workflows/build-image.yml
-    permissions: { contents: read, packages: write }
-    with:
-      image: gateway
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
-      build_args: |
-        JEWEL_REF=${{ needs.resolve.outputs.jewel }}
-        ANSIBLE_UI_REF=${{ needs.resolve.outputs.ansible_ui }}
-        DAB_REF=${{ needs.resolve.outputs.dab }}
-  controller:
-    needs: resolve
-    uses: ./.github/workflows/build-image.yml
-    permissions: { contents: read, packages: write }
-    with:
-      image: controller
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
-      build_args: |
-        AWX_REF=${{ needs.resolve.outputs.awx }}
-  hub:
-    needs: resolve
-    uses: ./.github/workflows/build-image.yml
-    permissions: { contents: read, packages: write }
-    with:
-      image: hub
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
-      # The same DAB commit as the gateway: the hub has to accept the tokens
-      # the gateway signs.
-      build_args: |
-        GALAXY_NG_REF=${{ needs.resolve.outputs.galaxy_ng }}
-        DAB_REF=${{ needs.resolve.outputs.dab }}
-  eda:
-    needs: resolve
-    uses: ./.github/workflows/build-image.yml
-    permissions: { contents: read, packages: write }
-    with:
-      image: eda
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
-      build_args: |
-        EDA_REF=${{ needs.resolve.outputs.eda }}
   receptor:
-    needs: resolve
+    needs: tag
     uses: ./.github/workflows/build-image.yml
     permissions: { contents: read, packages: write }
-    with:
-      image: receptor
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
-      # Hermetic: built from its pinned submodule, not the upstream head.
+    with: { image: receptor, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
+  gateway:
+    needs: tag
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: gateway, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
+  controller:
+    needs: tag
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: controller, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
+  hub:
+    needs: tag
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: hub, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
+  eda:
+    needs: tag
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: eda, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
   ee-minimal:
-    needs: resolve
+    needs: tag
     uses: ./.github/workflows/build-image.yml
     permissions: { contents: read, packages: write }
-    with:
-      image: ee-minimal
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
-      build_args: |
-        RECEPTOR_REF=${{ needs.resolve.outputs.receptor }}
-  # No upstream git ref in these two; they still take the run's tag so the
-  # whole set can be pinned by one value.
+    with: { image: ee-minimal, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
+  de-minimal:
+    needs: tag
+    uses: ./.github/workflows/build-image.yml
+    permissions: { contents: read, packages: write }
+    with: { image: de-minimal, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }
+  # Built FROM the de-minimal this run produced, as Red Hat's de-supported is
+  # built from its de-minimal.
   de-supported:
-    needs: resolve
+    needs: [tag, de-minimal]
     uses: ./.github/workflows/build-image.yml
     permissions: { contents: read, packages: write }
     with:
       image: de-supported
       platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
+      tag: ${{ needs.tag.outputs.tag }}
+      build_args: |
+        EE_BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/ace-de-minimal:${{ needs.tag.outputs.tag }}
   git-server:
-    needs: resolve
+    needs: tag
     uses: ./.github/workflows/build-image.yml
     permissions: { contents: read, packages: write }
-    with:
-      image: git-server
-      platforms: ${{ inputs.platforms }}
-      tag: ${{ needs.resolve.outputs.tag }}
+    with: { image: git-server, platforms: "${{ inputs.platforms }}", tag: "${{ needs.tag.outputs.tag }}" }

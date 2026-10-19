@@ -1,0 +1,42 @@
+# Every RPM any stage installs: the builder's compile tools, and what
+# install-from-bindep puts in the final image. Resolved against ubi9-minimal.
+contentOrigin:
+  repofiles:
+    - ../hack/ubi.repo
+context:
+  image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+arches:
+  - x86_64
+  - aarch64
+packages:
+  - python3.12
+  - python3.12-pip
+  - python3.12-setuptools
+  - python3.12-cffi
+  - python3.12-cryptography
+  - python3.12-pyyaml
+  - python3.12-lxml
+  - python3.12-urllib3
+  - python3.12-idna
+  - python3.12-charset-normalizer
+  - git-core
+  - openssh-clients
+  - sshpass
+  - krb5-workstation
+  - nss_wrapper
+  - glibc-langpack-en
+  - tar
+  - unzip
+  - bzip2
+  - xz
+  - zstd
+  - less
+  - tzdata
+  - gcc
+  - gcc-c++
+  - python3.12-devel
+  - krb5-devel
+  - libffi-devel
+  - openssl-devel
+  - rust
+  - cargo

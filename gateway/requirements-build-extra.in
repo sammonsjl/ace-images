@@ -1,0 +1,4 @@
+# Build backends of the packages built from submodules rather than sdists:
+# django-ansible-base and jewel (aap-gateway), both setuptools + setuptools-scm.
+setuptools>=64
+setuptools-scm>=8,<9

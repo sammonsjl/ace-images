@@ -1,20 +1,15 @@
 name: build-gateway
 
+# Hermetic where gateway/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in gateway/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh gateway, and push.
 on:
   workflow_dispatch:
-    inputs:
-      jewel_ref:
-        description: "ansible/jewel git ref (blank = Containerfile default)"
-        required: false
-        default: ""
-      ansible_ui_ref:
-        description: "ansible/ansible-ui git ref (blank = Containerfile default)"
-        required: false
-        default: ""
   push:
     branches: [main]
     paths:
       - "gateway/**"
+      - "hack/**"
       - ".github/workflows/gateway.yml"
       - ".github/workflows/build-image.yml"
 
@@ -26,6 +21,3 @@ jobs:
       packages: write
     with:
       image: gateway
-      build_args: |
-        ${{ inputs.jewel_ref && format('JEWEL_REF={0}', inputs.jewel_ref) || '' }}
-        ${{ inputs.ansible_ui_ref && format('ANSIBLE_UI_REF={0}', inputs.ansible_ui_ref) || '' }}

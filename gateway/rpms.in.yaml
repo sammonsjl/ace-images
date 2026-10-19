@@ -1,0 +1,50 @@
+# Every RPM any stage installs. Resolved against ubi9-minimal, with the
+# module streams the vendor image enables.
+contentOrigin:
+  repofiles:
+    - ../hack/ubi.repo
+    # xmlsec1-devel and libtool-ltdl-devel are not in UBI
+    - ../hack/centos-stream9.repo
+context:
+  image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+arches:
+  - x86_64
+  - aarch64
+moduleEnable:
+  - nginx:1.24
+  - nodejs:22
+packages:
+  # wheels stage
+  - python3.12-devel
+  - gcc
+  - gcc-c++
+  - make
+  - pkgconf-pkg-config
+  - libpq-devel
+  - openldap-devel
+  - libxml2-devel
+  - libxslt-devel
+  - xmlsec1-devel
+  - xmlsec1-openssl-devel
+  - libtool-ltdl-devel
+  - openssl-devel
+  - libffi-devel
+  - rust
+  - cargo
+  # ui stage
+  - nodejs
+  - npm
+  # final stage, as gateway-rhel9 installs it (less c-ares: not in UBI, and
+  # grpcio carries its own)
+  - glibc
+  - glibc-langpack-en
+  - pcre2
+  - python3.12
+  - python3.12-pip
+  - libpq
+  - openssl
+  - nginx
+  - postgresql
+  - xmlsec1
+  - xmlsec1-openssl
+  - tzdata

@@ -1,0 +1,25 @@
+# Every RPM any stage installs. Resolved against ubi9-minimal (ace-de-minimal
+# adds python3.12 and the JVM on top, all from these same repos).
+contentOrigin:
+  repofiles:
+    - ../hack/ubi.repo
+context:
+  image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+arches:
+  - x86_64
+  - aarch64
+packages:
+  - python3.12
+  - python3.12-pip
+  - python3.12-devel
+  - krb5-libs
+  - libpq
+  - pkgconf-pkg-config
+  - gcc
+  - gcc-c++
+  - krb5-devel
+  - libpq-devel
+  - libffi-devel
+  - openssl-devel
+  - rust
+  - cargo

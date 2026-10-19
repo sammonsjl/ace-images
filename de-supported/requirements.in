@@ -1,0 +1,17 @@
+# ansible.eda 2.13.0's requirements.txt, at the versions de-supported-rhel9
+# (AAP 2.7) carries, with psycopg's C build in place of the binary wheel and
+# without systemd-python (both excluded in execution-environment.yml).
+pyyaml>=6.0.1
+aiobotocore==3.8.0
+aiohttp==3.14.3
+aiokafka[gssapi]==0.14.0
+fastavro==1.12.2
+azure-servicebus==7.14.3
+dpath==2.2.0
+kafka-python-ng==2.2.3
+psycopg[c,pool]==3.3.4
+watchdog==6.0.0
+xxhash==3.8.1
+# What the base image already has, so the builder resolves against it.
+ansible-core==2.16.19
+ansible-runner==2.4.2

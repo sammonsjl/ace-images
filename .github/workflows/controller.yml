@@ -1,20 +1,15 @@
 name: build-controller
 
+# Hermetic where controller/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in controller/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh controller, and push.
 on:
   workflow_dispatch:
-    inputs:
-      awx_ref:
-        description: "ansible/awx git ref (blank = Containerfile default)"
-        required: false
-        default: ""
-      awx_version:
-        description: "version stamped into the sdist (blank = Containerfile default)"
-        required: false
-        default: ""
   push:
     branches: [main]
     paths:
       - "controller/**"
+      - "hack/**"
       - ".github/workflows/controller.yml"
       - ".github/workflows/build-image.yml"
 
@@ -26,6 +21,3 @@ jobs:
       packages: write
     with:
       image: controller
-      build_args: |
-        ${{ inputs.awx_ref && format('AWX_REF={0}', inputs.awx_ref) || '' }}
-        ${{ inputs.awx_version && format('AWX_VERSION={0}', inputs.awx_version) || '' }}

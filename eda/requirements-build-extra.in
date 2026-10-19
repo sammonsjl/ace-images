@@ -1,0 +1,6 @@
+# Build backends of the two packages built from submodules rather than sdists:
+# django-ansible-base (setuptools + setuptools-scm) and eda-server itself
+# (poetry-core). pybuild-deps only sees requirements.txt.
+setuptools>=64
+setuptools-scm>=8
+poetry-core>=2.0,<3.0

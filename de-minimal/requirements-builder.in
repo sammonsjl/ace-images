@@ -1,0 +1,4 @@
+# What ansible-builder's builder stage pip-installs for itself.
+bindep
+pyyaml
+packaging

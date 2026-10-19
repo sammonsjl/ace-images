@@ -1,3 +1,48 @@
 [submodule "receptor/src"]
 	path = receptor/src
 	url = https://github.com/ansible/receptor.git
+[submodule "eda/src"]
+	path = eda/src
+	url = https://github.com/ansible/eda-server.git
+[submodule "eda/django-ansible-base"]
+	path = eda/django-ansible-base
+	url = https://github.com/ansible/django-ansible-base.git
+[submodule "gateway/src"]
+	path = gateway/src
+	url = https://github.com/ansible/jewel.git
+[submodule "gateway/django-ansible-base"]
+	path = gateway/django-ansible-base
+	url = https://github.com/ansible/django-ansible-base.git
+[submodule "controller/src"]
+	path = controller/src
+	url = https://github.com/ansible/awx.git
+[submodule "hub/src"]
+	path = hub/src
+	url = https://github.com/ansible/galaxy_ng.git
+[submodule "hub/django-ansible-base"]
+	path = hub/django-ansible-base
+	url = https://github.com/ansible/django-ansible-base.git
+[submodule "gateway/ansible-ui"]
+	path = gateway/ansible-ui
+	url = https://github.com/ansible/ansible-ui.git
+[submodule "eda/system-certifi"]
+	path = eda/system-certifi
+	url = https://github.com/ansible/system-certifi.git
+[submodule "gateway/system-certifi"]
+	path = gateway/system-certifi
+	url = https://github.com/ansible/system-certifi.git
+[submodule "controller/system-certifi"]
+	path = controller/system-certifi
+	url = https://github.com/ansible/system-certifi.git
+[submodule "hub/system-certifi"]
+	path = hub/system-certifi
+	url = https://github.com/ansible/system-certifi.git
+[submodule "controller/awx-plugins"]
+	path = controller/awx-plugins
+	url = https://github.com/ansible/awx-plugins.git
+[submodule "controller/awx-plugins-interfaces"]
+	path = controller/awx-plugins-interfaces
+	url = https://github.com/ansible/awx_plugins.interfaces.git
+[submodule "controller/django-ansible-base"]
+	path = controller/django-ansible-base
+	url = https://github.com/ansible/django-ansible-base.git

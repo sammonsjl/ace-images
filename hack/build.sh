@@ -31,8 +31,29 @@ cd "$root"
 # Konflux builds from a copy of the prefetch output that every build user
 # can write to, holding only this arch's RPMs.
 work=$(mktemp -d "${out_root}/build-${image}.XXXXXX")
-trap 'chmod -R u+w "$work"; rm -rf "$work"' EXIT
+
+# The source edits Hermeto's inject-files made (npm lockfiles pointed at the
+# prefetched packages), applied for this build only; see hack/prefetch.sh.
+patched=()
+cleanup() {
+  for sub in "${patched[@]}"; do git -C "$sub" checkout -- . ; done
+  chmod -R u+w "$work"; rm -rf "$work"
+}
+trap cleanup EXIT
+if [ -s "$prefetched/inject.patches" ]; then
+  while read -r sub patch; do
+    git -C "$sub" apply "$prefetched/$patch"
+    patched+=("$sub")
+  done < "$prefetched/inject.patches"
+fi
+# Everything Hermeto wrote (deps/, and config such as .cargo/), except RPMs
+# for other arches.
 mkdir -p "$work/output/deps"
+for d in "$prefetched"/* "$prefetched"/.[!.]*; do
+  [ -e "$d" ] || continue
+  [ "$(basename "$d")" = deps ] && continue
+  cp -r "$d" "$work/output/"
+done
 for d in "$prefetched"/deps/*; do
   [ "$(basename "$d")" = rpm ] && continue
   cp -r "$d" "$work/output/deps/"
@@ -60,10 +81,35 @@ for e in json.load(open(sys.argv[1])): print(e["name"] + "\t" + e["value"])' "$p
 args+=(--label "build-date=$(date -u +%Y-%m-%dT%H:%M:%S)" --label "architecture=$arch" --label vcs-type=git)
 args+=(--label "vcs-ref=$(git rev-parse HEAD)")
 
-# Base images are pulled while the network is still allowed.
-for base in $(grep -iE '^\s*FROM' "$image/Containerfile" | sed -E 's/--platform=\S+//I' | awk '{print $2}' | sort -u); do
-  case "$base" in scratch) continue ;; esac
-  grep -qiE "^\s*FROM\s.*\sAS\s+${base}\s*$" "$image/Containerfile" && continue
+# Base images are pulled while the network is still allowed. A FROM may name
+# its image through an ARG (ansible-builder's FROM $EE_BASE_IMAGE), so ARG
+# defaults are expanded; stage names are not images.
+bases=$(python3 - "$image/Containerfile" "$@" <<'PY'
+import re, sys
+args, stages, bases = {}, set(), []
+# --build-arg K=V among the extra arguments wins over the ARG default.
+extra = sys.argv[2:]
+for i, a in enumerate(extra):
+    v = a.split("=", 1)[1] if a.startswith("--build-arg=") else (extra[i + 1] if a == "--build-arg" and i + 1 < len(extra) else None)
+    if v and "=" in v:
+        k, val = v.split("=", 1)
+        args[k] = val
+for line in open(sys.argv[1]):
+    m = re.match(r'\s*ARG\s+(\w+)=["\x27]?([^"\x27\s]*)', line)
+    if m:
+        args.setdefault(m.group(1), m.group(2))
+    m = re.match(r'\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?', line, re.I)
+    if m:
+        ref = re.sub(r'\$\{?(\w+)\}?', lambda v: args.get(v.group(1), ''), m.group(1))
+        if ref not in stages and ref != 'scratch':
+            bases.append(ref)
+        if m.group(2):
+            stages.add(m.group(2))
+print(' '.join(dict.fromkeys(bases)))
+PY
+)
+for base in $bases; do
+  case "$base" in localhost/*) continue ;; esac  # built here, nothing to pull
   podman pull -q "$base" >/dev/null
 done
 

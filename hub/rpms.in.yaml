@@ -1,0 +1,46 @@
+# Every RPM any stage installs. Resolved against ubi9-minimal.
+contentOrigin:
+  repofiles:
+    - ../hack/ubi.repo
+context:
+  image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+arches:
+  - x86_64
+  - aarch64
+packages:
+  # wheels stage
+  - python3.12-devel
+  - gcc
+  - gcc-c++
+  - make
+  - pkgconf-pkg-config
+  - libpq-devel
+  - openldap-devel
+  - libjpeg-turbo-devel
+  - zlib-devel
+  - libxml2-devel
+  - libxslt-devel
+  - libffi-devel
+  - openssl-devel
+  - libyaml-devel
+  - rust
+  - cargo
+  # final stage, as hub-rhel9 installs it (less c-ares)
+  - glibc-langpack-en
+  - git-core
+  - libjpeg-turbo
+  - libpq
+  - libyaml
+  - libxslt
+  - python3.12
+  - python3.12-pip
+  - gettext
+  - skopeo
+  - diffutils
+  - jq
+  - pinentry
+  - sshpass
+  - tar
+  - yajl
+  - tzdata
+  - shadow-utils

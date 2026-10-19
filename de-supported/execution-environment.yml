@@ -1,0 +1,42 @@
+# The ACE supported decision environment: ace-de-minimal plus the ansible.eda
+# collection and the Python its event sources import (Kafka, AWS, Azure, ...).
+# Built FROM ace-de-minimal, as de-supported-rhel9 is built from Red Hat's
+# de-minimal. Generated into a build context by hack/ee-create.sh
+# de-supported; built hermetically like every other image. The collection
+# itself is prefetched as a generic artifact (artifacts.lock.yaml).
+version: 3
+
+images:
+  base_image:
+    name: ghcr.io/sammonsjl/ace-de-minimal:latest
+
+dependencies:
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
+  galaxy: requirements.yml
+  python: requirements.in
+  system: bindep.txt
+  # The collection asks for psycopg's binary wheel (no sdist exists to build
+  # it from) and systemd-python; the vendor image carries neither, and builds
+  # psycopg's C extension instead (requirements.in).
+  exclude:
+    python:
+      - psycopg-binary
+      - systemd-python
+
+options:
+  package_manager_path: /usr/bin/microdnf
+
+additional_build_steps:
+  prepend_base:
+    - RUN $PKGMGR install --nodocs -y gcc gcc-c++ python3.12-devel libffi-devel openssl-devel rust cargo && $PKGMGR clean all
+  append_final:
+    - >-
+      ENV DESCRIPTION="ACE supported decision environment: ansible.eda and its
+      event sources" container=oci
+    - >-
+      LABEL name="ace-de-supported" summary="${DESCRIPTION}" description="${DESCRIPTION}"
+      io.k8s.description="${DESCRIPTION}" io.k8s.display-name="ACE supported decision environment"
+      io.openshift.tags="ace,automation,decision-environment" maintainer="Jamie Sammons"

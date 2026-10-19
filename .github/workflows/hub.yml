@@ -1,16 +1,15 @@
 name: build-hub
 
+# Hermetic where hub/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in hub/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh hub, and push.
 on:
   workflow_dispatch:
-    inputs:
-      galaxy_ng_ref:
-        description: "ansible/galaxy_ng git ref (blank = Containerfile default)"
-        required: false
-        default: ""
   push:
     branches: [main]
     paths:
       - "hub/**"
+      - "hack/**"
       - ".github/workflows/hub.yml"
       - ".github/workflows/build-image.yml"
 
@@ -22,5 +21,3 @@ jobs:
       packages: write
     with:
       image: hub
-      build_args: |
-        ${{ inputs.galaxy_ng_ref && format('GALAXY_NG_REF={0}', inputs.galaxy_ng_ref) || '' }}

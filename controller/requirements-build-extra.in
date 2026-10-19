@@ -1,0 +1,5 @@
+# Build backends of what is built from submodules: AWX, django-ansible-base,
+# awx-plugins-core and awx_plugins.interfaces (setuptools + setuptools-scm),
+# system-certifi (setuptools).
+setuptools>=64
+setuptools-scm>=8,<10

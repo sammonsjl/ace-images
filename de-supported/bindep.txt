@@ -1,0 +1,13 @@
+krb5-libs [platform:rpm]
+libpq [platform:rpm]
+# Only to compile wheels in the builder stage.
+pkgconf-pkg-config [platform:rpm compile]
+gcc [platform:rpm compile]
+gcc-c++ [platform:rpm compile]
+python3.12-devel [platform:rpm compile]
+krb5-devel [platform:rpm compile]
+libpq-devel [platform:rpm compile]
+libffi-devel [platform:rpm compile]
+openssl-devel [platform:rpm compile]
+rust [platform:rpm compile]
+cargo [platform:rpm compile]

@@ -1,0 +1,29 @@
+# Every RPM any stage installs. Resolved against ubi9-minimal.
+contentOrigin:
+  repofiles:
+    - ../hack/ubi.repo
+context:
+  image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+arches:
+  - x86_64
+  - aarch64
+packages:
+  # wheels stage
+  - python3.12-devel
+  - gcc
+  - libpq-devel
+  - krb5-devel
+  - openssl-devel
+  - libffi-devel
+  - rust
+  - cargo
+  # final stage, as eda-controller-rhel9 installs it
+  - git-core
+  - glibc-langpack-en
+  - libpq
+  - libyaml
+  - openssh
+  - openssl
+  - python3.12
+  - python3.12-pip
+  - tzdata

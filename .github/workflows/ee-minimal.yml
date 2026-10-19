@@ -1,20 +1,15 @@
 name: build-ee-minimal
 
+# Hermetic where ee-minimal/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in ee-minimal/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh ee-minimal, and push.
 on:
   workflow_dispatch:
-    inputs:
-      ansible_core_version:
-        description: "ansible-core version (blank = Containerfile default)"
-        required: false
-        default: ""
-      ansible_runner_version:
-        description: "ansible-runner version (blank = Containerfile default)"
-        required: false
-        default: ""
   push:
     branches: [main]
     paths:
       - "ee-minimal/**"
+      - "hack/**"
       - ".github/workflows/ee-minimal.yml"
       - ".github/workflows/build-image.yml"
 
@@ -26,6 +21,3 @@ jobs:
       packages: write
     with:
       image: ee-minimal
-      build_args: |
-        ${{ inputs.ansible_core_version && format('ANSIBLE_CORE_VERSION={0}', inputs.ansible_core_version) || '' }}
-        ${{ inputs.ansible_runner_version && format('ANSIBLE_RUNNER_VERSION={0}', inputs.ansible_runner_version) || '' }}

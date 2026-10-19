@@ -1,0 +1,23 @@
+name: build-de-minimal
+
+# Hermetic where de-minimal/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in de-minimal/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh de-minimal, and push.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "de-minimal/**"
+      - "hack/**"
+      - ".github/workflows/de-minimal.yml"
+      - ".github/workflows/build-image.yml"
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-image.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image: de-minimal

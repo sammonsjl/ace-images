@@ -1,0 +1,67 @@
+# The ACE minimal execution environment, defined the way Red Hat defines
+# ee-minimal-rhel9: an ansible-builder v3 file. `hack/ee-create.sh ee-minimal`
+# turns it into the build context (Containerfile + _build/), committed so the
+# Containerfile can be read and diffed, and built hermetically like every
+# other image (hack/prefetch.sh, hack/build.sh).
+version: 3
+
+images:
+  base_image:
+    name: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+
+dependencies:
+  python_interpreter:
+    package_system: python3.12
+    python_path: /usr/bin/python3.12
+  # Installed from the builder's wheels like everything else; pinned in
+  # requirements.in. ansible-core 2.16 pairs with the controller release the
+  # vendor EE ships for (its image tag is the core version).
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
+  python: requirements.in
+  system: bindep.txt
+
+options:
+  package_manager_path: /usr/bin/microdnf
+  skip_ansible_check: true
+  skip_pip_install: false
+  relax_passwd_permissions: false
+  user: root
+  container_init:
+    package_pip: ""
+    entrypoint: '["entrypoint"]'
+    cmd: '["ansible-runner", "run", "/runner"]'
+
+additional_build_steps:
+  # Hermetic builds have only sdists, so even the base stage's install of
+  # ansible-core and ansible-runner compiles C. The base stage never reaches
+  # the final image (see hack/ee-create.sh), so its compilers don't either.
+  prepend_base:
+    - RUN $PKGMGR install --nodocs -y gcc python3.12-devel krb5-devel libffi-devel openssl-devel rust cargo && $PKGMGR clean all
+  append_final:
+    # The runner's working tree and the home it uses, group-writable for an
+    # arbitrary uid in group root.
+    - >-
+      RUN for dir in /home/runner /home/runner/.ansible /home/runner/.ansible/tmp
+      /runner /runner/env /runner/inventory /runner/project /runner/artifacts ;
+      do mkdir -m 0775 -p $dir ; chmod -R g+rwx $dir ; chgrp -R root $dir ; done
+    - RUN alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+    - RUN alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.12 1
+    # ubi-minimal ships tzdata without its zone files; reinstalling brings them back.
+    - RUN $PKGMGR reinstall --setopt=install_weak_deps=0 --nodocs -y tzdata && $PKGMGR clean all
+    - VOLUME /runner
+    - ENV HOME=/home/runner
+    - ADD _build/scripts/entrypoint /bin/entrypoint
+    - >-
+      ENV DESCRIPTION="ACE minimal execution environment: ansible-core and
+      ansible-runner, nothing else" container=oci
+    - >-
+      LABEL name="ace-ee-minimal" summary="${DESCRIPTION}" description="${DESCRIPTION}"
+      io.k8s.description="${DESCRIPTION}" io.k8s.display-name="ACE minimal execution environment"
+      io.openshift.tags="ace,automation,execution-environment" maintainer="Jamie Sammons"
+    # Not in the vendor image. A job runs as an arbitrary uid against a project
+    # checkout owned by someone else, and git's ownership guard then refuses
+    # the very next command after the clone. The container is the boundary.
+    - RUN git config --system --add safe.directory '*'

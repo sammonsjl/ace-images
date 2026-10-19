@@ -1,0 +1,27 @@
+[
+  {
+    "type": "pip",
+    "path": "gateway",
+    "requirements_files": [
+      "requirements.txt"
+    ],
+    "requirements_build_files": [
+      "requirements-build.txt",
+      "requirements-build-extra.txt"
+    ],
+    "binary": {
+      "packages": "uv-build",
+      "arch": "x86_64,aarch64",
+      "os": "linux",
+      "py_version": 312
+    }
+  },
+  {
+    "type": "npm",
+    "path": "gateway/ansible-ui"
+  },
+  {
+    "type": "rpm",
+    "path": "gateway"
+  }
+]

@@ -142,22 +142,32 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       # ---- hermetic path ----------------------------------------------------
-      - name: Check out the image's upstream source
+      - name: Check out the image's upstream sources (its submodules)
         if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'true'
-        run: git submodule update --init --depth 1 -- "${{ inputs.image }}/src" 2>/dev/null || git submodule update --init -- "${{ inputs.image }}/src"
+        run: |
+          paths=$(git config --file .gitmodules --get-regexp '^submodule\.${{ inputs.image }}/.*\.path$' | awk '{print $2}')
+          [ -z "$paths" ] || git submodule update --init -- $paths
 
       - name: Prefetch, build with no network, push by digest
         if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_ARGS: ${{ inputs.build_args }}
         run: |
           set -euo pipefail
           src_ref=$(git -C "${{ inputs.image }}/src" rev-parse HEAD 2>/dev/null || echo none)
+          # The caller's ARG=value lines become --build-arg flags (build-all
+          # uses this to point de-supported at the de-minimal it just built).
+          build_args=""
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            [ -n "$line" ] && build_args="$build_args --build-arg $line"
+          done <<< "$BUILD_ARGS"
           docker build -q -t ace-ci -f hack/ci/Containerfile hack/ci
           docker run --rm --privileged -v "$PWD:/repo" -e GH_TOKEN -e ACE_OUT=/var/tmp/ace-out ace-ci sh -euc '
             git config --global --add safe.directory "*"
             hack/prefetch.sh "${{ inputs.image }}"
-            hack/build.sh "${{ inputs.image }}" ci -- \
+            hack/build.sh "${{ inputs.image }}" ci -- '"$build_args"' \
               --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
               --label "org.opencontainers.image.revision=${{ github.sha }}" \
               --label "org.opencontainers.image.licenses=Apache-2.0" \

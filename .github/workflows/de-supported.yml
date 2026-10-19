@@ -1,20 +1,15 @@
 name: build-de-supported
 
+# Hermetic where de-supported/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in de-supported/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh de-supported, and push.
 on:
   workflow_dispatch:
-    inputs:
-      ansible_rulebook_version:
-        description: "ansible-rulebook version (blank = Containerfile default)"
-        required: false
-        default: ""
-      ansible_core_version:
-        description: "ansible-core version (blank = Containerfile default)"
-        required: false
-        default: ""
   push:
     branches: [main]
     paths:
       - "de-supported/**"
+      - "hack/**"
       - ".github/workflows/de-supported.yml"
       - ".github/workflows/build-image.yml"
 
@@ -26,6 +21,4 @@ jobs:
       packages: write
     with:
       image: de-supported
-      build_args: |
-        ${{ inputs.ansible_rulebook_version && format('ANSIBLE_RULEBOOK_VERSION={0}', inputs.ansible_rulebook_version) || '' }}
-        ${{ inputs.ansible_core_version && format('ANSIBLE_CORE_VERSION={0}', inputs.ansible_core_version) || '' }}
+      # Built FROM ace-de-minimal; on its own it takes de-minimal's :latest.

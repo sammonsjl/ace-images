@@ -1,0 +1,5 @@
+src/.git
+django-ansible-base/.git
+ansible-ui/.git
+ansible-ui/node_modules
+system-certifi/.git

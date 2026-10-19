@@ -43,7 +43,23 @@ run fetch-deps --source . --output /output "$(cat "${image}/hermeto.json")"
 # output at -- the same /cachi2/output Konflux uses.
 run generate-env /output --format json --for-output-dir /cachi2/output -o /output/prefetch-env.json
 
-# For RPMs this writes a .repo file per arch pointing at the local repos.
+# The same variables for a build done in place rather than in a container --
+# AWX the Hard Way's build host sources this one.
+run generate-env /output --format env --for-output-dir "$out" -o /output/prefetch.env
+
+# For RPMs this writes a .repo file per arch pointing at the local repos. For
+# npm it also rewrites the source tree: package-lock.json's URLs become paths
+# into the prefetched output. That edit belongs to the build, not the
+# checkout, so it is saved as a patch beside the output and the submodule put
+# back; hack/build.sh applies it for the length of the build.
 run inject-files /output --for-output-dir /cachi2/output
+: > "$out/inject.patches"
+for sub in $(git config --file .gitmodules --get-regexp "^submodule\.${image}/.*\.path$" | awk '{print $2}'); do
+  if ! git -C "$sub" diff --quiet; then
+    git -C "$sub" diff > "$out/inject-$(basename "$sub").patch"
+    echo "$sub inject-$(basename "$sub").patch" >> "$out/inject.patches"
+    git -C "$sub" checkout -- .
+  fi
+done
 
 echo "prefetched into $out ($(du -sh "$out" | cut -f1))"

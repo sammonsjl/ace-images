@@ -1,0 +1,7 @@
+# Packages the image needs that eda-server's poetry.lock does not pin: the
+# WSGI server, PID 1, the C build of psycopg, and ansible-core for the
+# playbooks EDA runs itself. Versions as in eda-controller-rhel9 (AAP 2.7).
+gunicorn==22.0.0
+dumb-init==1.2.5.post1
+psycopg-c==3.2.7
+ansible-core==2.16.19

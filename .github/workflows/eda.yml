@@ -1,16 +1,15 @@
 name: build-eda
 
+# Hermetic where eda/hermeto.json exists: the upstream source is pinned by
+# submodule and every dependency by the lockfiles in eda/. To refresh, bump
+# the submodule and/or the *.in files, run hack/lock.sh eda, and push.
 on:
   workflow_dispatch:
-    inputs:
-      eda_ref:
-        description: "ansible/eda-server git ref (blank = Containerfile default)"
-        required: false
-        default: ""
   push:
     branches: [main]
     paths:
       - "eda/**"
+      - "hack/**"
       - ".github/workflows/eda.yml"
       - ".github/workflows/build-image.yml"
 
@@ -22,5 +21,3 @@ jobs:
       packages: write
     with:
       image: eda
-      build_args: |
-        ${{ inputs.eda_ref && format('EDA_REF={0}', inputs.eda_ref) || '' }}

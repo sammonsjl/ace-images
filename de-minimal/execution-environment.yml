@@ -1,0 +1,45 @@
+# The ACE minimal decision environment: what rulebooks need and nothing more
+# (python, ansible-core, ansible-runner, ansible-rulebook and the Drools
+# engine it drives through a JVM). Red Hat ships the same split:
+# de-supported-rhel9 is built FROM a de-minimal-rhel9, and so is
+# ace-de-supported FROM this. Generated into a build context by
+# hack/ee-create.sh de-minimal; built hermetically like every other image.
+version: 3
+
+images:
+  base_image:
+    name: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+
+dependencies:
+  python_interpreter:
+    package_system: python3.12
+    python_path: /usr/bin/python3.12
+  ansible_core:
+    package_pip: ansible-core
+  ansible_runner:
+    package_pip: ansible-runner
+  python: requirements.in
+  system: bindep.txt
+
+options:
+  package_manager_path: /usr/bin/microdnf
+  container_init:
+    package_pip: dumb-init==1.2.5.post1
+
+additional_build_steps:
+  # Hermetic builds have only sdists, so the base stage's own install of
+  # ansible-core and ansible-runner compiles C; the base stage never reaches
+  # the final image (hack/ee-create.sh).
+  prepend_base:
+    - RUN $PKGMGR install --nodocs -y gcc gcc-c++ python3.12-devel libffi-devel openssl-devel rust cargo && $PKGMGR clean all
+  # The final stage starts from ubi-minimal itself, so the entrypoint
+  # ansible-builder put in the base stage is brought along here.
+  append_final:
+    - COPY _build/scripts/entrypoint /opt/builder/bin/entrypoint
+    - >-
+      ENV DESCRIPTION="ACE minimal decision environment: ansible-rulebook and
+      its Drools engine" container=oci
+    - >-
+      LABEL name="ace-de-minimal" summary="${DESCRIPTION}" description="${DESCRIPTION}"
+      io.k8s.description="${DESCRIPTION}" io.k8s.display-name="ACE minimal decision environment"
+      io.openshift.tags="ace,automation,decision-environment" maintainer="Jamie Sammons"

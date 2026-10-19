@@ -1,0 +1,60 @@
+# Every RPM any stage installs. Resolved against ubi9-minimal, with the
+# module streams the vendor image enables.
+contentOrigin:
+  repofiles:
+    - ../hack/ubi.repo
+    # xmlsec1-devel and libtool-ltdl-devel are not in UBI
+    - ../hack/centos-stream9.repo
+context:
+  image: registry.access.redhat.com/ubi9/ubi-minimal:9.8
+arches:
+  - x86_64
+  - aarch64
+moduleEnable:
+  - nginx:1.24
+packages:
+  # venv stage
+  - python3.12-devel
+  - gcc
+  - gcc-c++
+  - make
+  - pkgconf-pkg-config
+  - libpq-devel
+  - krb5-devel
+  - libffi-devel
+  - openssl-devel
+  - libxml2-devel
+  - libxslt-devel
+  - xmlsec1-devel
+  - xmlsec1-openssl-devel
+  - libtool-ltdl-devel
+  - openldap-devel
+  - rust
+  - cargo
+  # final stage, as controller-rhel9 installs it (less c-ares and redis)
+  - glibc-langpack-en
+  - python3.12
+  - python3.12-pyyaml
+  - python3.12-pip
+  - hostname
+  - krb5-workstation
+  - nginx
+  - postgresql
+  - xmlsec1
+  - xmlsec1-openssl
+  - git-core
+  - crontabs
+  - sshpass
+  - git-lfs
+  - subscription-manager
+  - subversion
+  - sos
+  - rsync
+  - rsyslog
+  - crun
+  - zlib
+  - openldap
+  - python3-libsemanage
+  - findutils
+  - podman-remote
+  - tzdata

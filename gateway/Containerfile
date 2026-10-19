@@ -1,145 +1,125 @@
-# ACE gateway — the platform gateway (jewel) with the unified console baked in,
-# built entirely from Apache-2.0 upstream source.
+# ACE gateway: jewel (src/, at the public commit nearest the vendor's
+# 2.7.20260824) plus the platform console from ansible-ui, built the way
+# gateway-rhel9 (AAP 2.7) is built. Hermetic: hack/prefetch.sh gateway, then
+# hack/build.sh gateway.
 #
-#   ansible/jewel      -> the gateway application   (JEWEL_REF)
-#   ansible/ansible-ui -> the platform console      (ANSIBLE_UI_REF)
-#
-# Both are pinned to a commit. A moving branch is not reproducible, and this
-# tutorial is meant to still build in a year.
-
-ARG JEWEL_REF=cd1fd8e657f873f2b7c328cf3acc8696f23fb2ed          # ansible/jewel devel, verified 2026-08-27
-ARG ANSIBLE_UI_REF=75d1264624fcf08777f72fcaaeaeb93d9d4a90d1     # ansible/ansible-ui devel, verified 2026-08-27
-# jewel's requirements_git.txt pulls django-ansible-base from a branch, resolved at
-# build time. The default keeps that. build-all passes one DAB commit to both this
-# image and the hub, so the gateway that signs tokens and the hub that checks them
-# are built against the same DAB.
-ARG DAB_REF=devel
-ARG PYTHON=python3.12
+#   wheels  every Python package from its sdist, plus django-ansible-base,
+#           jewel (as the aap-gateway package) and system-certifi from their
+#           submodules
+#   ui      the console, from ansible-ui's platform workspace
+#   final   ubi9-minimal; the vendor's final stage, step for step (NOTES.md)
 
 ###############################################################################
-# Stage 1 — fetch the gateway source at a pinned commit
+# Builder: wheels. PIP_NO_INDEX/PIP_FIND_LINKS come from the prefetch.
 ###############################################################################
-FROM quay.io/centos/centos:stream9 AS jewel-src
-ARG JEWEL_REF
-RUN dnf install -y git && dnf clean all
-WORKDIR /src
-RUN git clone https://github.com/ansible/jewel.git . && git checkout "${JEWEL_REF}"
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS wheels
+RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc gcc-c++ make \
+      pkgconf-pkg-config libpq-devel openldap-devel libxml2-devel libxslt-devel \
+      xmlsec1-devel xmlsec1-openssl-devel libtool-ltdl-devel openssl-devel libffi-devel \
+      rust cargo && \
+    dnf clean all
+COPY requirements.txt /tmp/requirements.txt
+COPY django-ansible-base/ /src/django-ansible-base/
+COPY src/ /src/jewel/
+COPY system-certifi/ /src/system-certifi/
+# No .git in either submodule, so setuptools-scm is told the versions: the
+# releases the vendor image carries.
+RUN python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt && \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
+      python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/django-ansible-base && \
+    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AAP_GATEWAY=2.7.20260824 \
+      python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/jewel && \
+    python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/system-certifi
 
 ###############################################################################
-# Stage 2 — build the console with node. Node exists only in this stage.
+# Builder: the platform console. npm reads the prefetched packages through the
+# rewritten package-lock.json (hack/prefetch.sh's inject-files).
 ###############################################################################
-FROM docker.io/library/node:20-bookworm AS ui-builder
-ARG ANSIBLE_UI_REF
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS ui
+RUN dnf module enable -y nodejs:22 && dnf install -y --nodocs nodejs npm && dnf clean all
+COPY ansible-ui/ /ui/
 WORKDIR /ui
-RUN git clone https://github.com/ansible/ansible-ui.git . && git checkout "${ANSIBLE_UI_REF}"
-RUN npm ci
-RUN cd platform && NODE_OPTIONS=--max-old-space-size=8192 npm run build
+RUN npm ci --no-audit --no-fund && \
+    cd platform && NODE_OPTIONS=--max-old-space-size=8192 npm run build
 
 ###############################################################################
-# Stage 3 — the virtualenv
+# Final stage
 ###############################################################################
-FROM quay.io/centos/centos:stream9 AS builder
-ARG PYTHON
-ARG DAB_REF
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 
-ENV LANG=en_US.UTF-8
-ENV DJANGO_SETTINGS_MODULE=aap_gateway_api.settings
-ENV PYTHONUNBUFFERED=1
+ARG NGINX_VERSION=1.24
+ARG POSTGRESQL_VERSION=15
 
-RUN sed -i '/^\[crb\]$/,/^enabled=0$/ s/enabled=0/enabled=1/' /etc/yum.repos.d/centos.repo && \
-    dnf install -y \
-      git gcc "${PYTHON}-devel" "${PYTHON}" "${PYTHON}-pip" \
-      libpq libpq-devel libtool-ltdl-devel openldap-devel \
-      postgresql xmlsec1-devel && \
-    dnf clean all
+RUN microdnf -y module enable nginx:$NGINX_VERSION postgresql:$POSTGRESQL_VERSION && \
+    microdnf update --setopt=install_weak_deps=0 --nodocs -y && \
+    microdnf install --setopt=install_weak_deps=0 --nodocs -y \
+      glibc glibc-langpack-en pcre2 python3.12 python3.12-pip libpq openssl \
+      nginx postgresql xmlsec1 xmlsec1-openssl && \
+    microdnf reinstall --setopt=install_weak_deps=0 --nodocs -y tzdata && \
+    microdnf clean all
 
+# A system user and group, also in group root for an arbitrary runtime uid.
+RUN groupadd -r gateway && \
+    useradd -r -g gateway -d /var/lib/ansible-automation-platform -s /sbin/nologin gateway && \
+    usermod -aG root gateway && \
+    mkdir -p /var/lib/ansible-automation-platform/platform/ui/static && \
+    chown -R gateway:gateway /var/lib/ansible-automation-platform && \
+    mkdir -m 770 -p /run/supervisor
+
+COPY --from=wheels /wheels /tmp/wheels
+COPY --from=ui /ui/platform/dist/ /var/lib/ansible-automation-platform/platform/ui
+
+# Process supervision lives in the system interpreter; the application in a
+# venv of its own, which then loses pip, as does the system.
+RUN python3.12 -m pip install --prefix /usr --no-cache-dir --no-index --find-links /tmp/wheels \
+      dumb-init supervisor requests
 RUN mkdir -p /opt/aap-gateway && chgrp -R 0 /opt/aap-gateway && chmod -R g=u /opt/aap-gateway
-RUN "/usr/bin/${PYTHON}" -m venv /opt/aap-gateway/venv
-RUN echo "/opt/aap-gateway/aap_gateway" > "/opt/aap-gateway/venv/lib/${PYTHON}/site-packages/project.pth"
-RUN /opt/aap-gateway/venv/bin/pip install --upgrade 'setuptools>=65.5.1'
+RUN python3.12 -m venv /opt/aap-gateway/venv && \
+    /opt/aap-gateway/venv/bin/pip install --no-cache-dir --no-index --find-links /tmp/wheels \
+      'psycopg[c]' aap-gateway && \
+    rm -rf /tmp/wheels
+RUN /opt/aap-gateway/venv/bin/pip uninstall -y pip && \
+    microdnf remove -y python3.12-pip && microdnf clean all
 
-COPY --from=jewel-src /src/requirements/requirements.txt /tmp/requirements.txt
-COPY --from=jewel-src /src/requirements/requirements_git.txt /tmp/requirements_git.txt
-RUN /opt/aap-gateway/venv/bin/pip --no-cache-dir install -r /tmp/requirements.txt
-# Point jewel's DAB line at DAB_REF, and fail if there was no such line to rewrite:
-# a silent no-op would build a gateway on a different DAB than the hub.
-RUN sed -Ei "s#(django-ansible-base(\[[^]]*\])? @ git\+https://github.com/ansible/django-ansible-base)@[^[:space:]]+#\1@${DAB_REF}#" /tmp/requirements_git.txt && \
-    grep -q "django-ansible-base@${DAB_REF}\$" /tmp/requirements_git.txt
-RUN /opt/aap-gateway/venv/bin/pip --no-cache-dir install -r /tmp/requirements_git.txt
+# The source tree on the path as well, through a .pth file.
+RUN echo "/opt/aap-gateway/src" > /opt/aap-gateway/venv/lib/python3.12/site-packages/project.pth
+COPY src/aap_gateway_api/ /opt/aap-gateway/src/aap_gateway_api/
+ENV PYTHONPATH=/opt/aap-gateway/src
+ENV PATH=/opt/aap-gateway/venv/bin:$PATH
+COPY src/tools/scripts/aap-gateway-manage /usr/bin/aap-gateway-manage
 
-###############################################################################
-# Stage 4 — the runtime. No compilers, no node, no git.
-###############################################################################
-FROM quay.io/centos/centos:stream9
-ARG PYTHON
-
-RUN dnf module install -y nginx:1.24/common && \
-    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
-    dnf install -y \
-      dumb-init inotify-tools less libpq postgresql glibc-langpack-en \
-      "${PYTHON}" "${PYTHON}-pip" supervisor xmlsec1-openssl && \
-    dnf clean all
-
-# The vendor sets a UTF-8 locale in every image. Django and click both behave
-# differently without one, and "it worked in my container" bugs trace back here.
-ENV LANG=en_US.UTF-8 \
-    LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8 \
-    container=oci
-
-RUN useradd -u 1000 -g 0 -d /var/lib/ansible-automation-platform -m -s /sbin/nologin gateway
-
-COPY --from=builder   /opt/aap-gateway /opt/aap-gateway
-COPY --from=jewel-src /src/tools/scripts/launch-gateway      /usr/bin/launch-gateway
-COPY --from=jewel-src /src/tools/scripts/auto-reload         /usr/bin/auto-reload
-COPY --from=jewel-src /src/tools/scripts/aap-gateway-manage  /usr/bin/aap-gateway-manage
-COPY --from=jewel-src /src/tools/configs/nginx.conf          /etc/ansible-automation-platform/gateway/nginx.conf
-COPY --from=jewel-src /src/tools/configs/nginx-gateway.conf  /etc/ansible-automation-platform/gateway/nginx-gateway.conf
-COPY --from=jewel-src /src/tools/configs/uwsgi.ini           /etc/ansible-automation-platform/gateway/uwsgi.ini
-COPY --from=jewel-src /src/tools/configs/supervisord.conf    /etc/supervisord.conf
-COPY --from=jewel-src /src/tools/configs/settings.py         /etc/ansible-automation-platform/gateway/settings.py
-
-# jewel hardcodes its own base dir, /opt/aap_gateway, throughout the scripts and
-# configs it ships. This image installs to /opt/aap-gateway to match the layout
-# the platform's own tooling resolves, so everything jewel supplies has to be
-# retargeted. That is the cost of matching the deployed layout rather than
-# upstream's — and it is why the released images carry no such scripts: their
-# installer templates its own. See NOTICE.
-RUN sed -i 's|/opt/aap_gateway|/opt/aap-gateway|g' \
-      /usr/bin/launch-gateway /usr/bin/auto-reload /usr/bin/aap-gateway-manage \
-      /etc/ansible-automation-platform/gateway/nginx-gateway.conf \
-      /etc/ansible-automation-platform/gateway/uwsgi.ini \
-      /etc/supervisord.conf \
-      /etc/ansible-automation-platform/gateway/settings.py && \
-    grep -rl "aap_gateway" /usr/bin/launch-gateway /etc/supervisord.conf || true
-
-RUN for dir in /etc/nginx /opt/aap-gateway /opt/aap-gateway/src \
-               /var/lib/ansible-automation-platform/platform/ui \
-               /var/log/supervisor /var/run/supervisor /var/run/uwsgi \
-               /var/log/nginx /var/run/django_metrics \
-               /var/cache/ansible-automation-platform/gateway ; \
-    do mkdir -m 0775 -p "$dir" ; chmod g+rwx "$dir" ; chgrp root "$dir" ; done && \
-    for file in /etc/nginx/gateway.crt /etc/nginx/gateway.key ; \
-    do touch "$file" ; chmod g+rw "$file" ; chgrp root "$file" ; done && \
+# Runtime directories group-writable; the TLS pair pre-created so a bind
+# mount lands on a file the gateway user may read.
+RUN for dir in /etc/nginx /opt/aap_gateway /opt/aap_gateway/src /var/log/supervisor \
+               /var/run/supervisor /var/run/uwsgi /var/log/nginx /var/run/django_metrics ; do \
+      mkdir -m 0775 -p "$dir" ; chmod g+rwx "$dir" ; chgrp root "$dir" ; \
+    done && \
+    for file in /etc/nginx/gateway.crt /etc/nginx/gateway.key ; do \
+      touch "$file" ; chmod g+rw "$file" ; chgrp root "$file" ; \
+    done && \
     ln -s /usr/bin/aap-gateway-manage /usr/bin/gateway-manage
 
-ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+ENV DESCRIPTION="ACE gateway: the platform gateway and console"
+ARG AAP_GATEWAY_GIT_TAG=2.7.20260824
+LABEL name="ace-gateway" \
+      version="${AAP_GATEWAY_GIT_TAG}" \
+      summary="${DESCRIPTION}" \
+      description="${DESCRIPTION}" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.k8s.display-name="ACE gateway" \
+      io.openshift.tags="ace,automation,gateway" \
+      maintainer="Jamie Sammons"
+ENV container=oci
+USER root
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
-COPY --from=jewel-src /src/aap_gateway_api /opt/aap-gateway/src/aap_gateway_api/
-ENV PATH=/opt/aap-gateway/venv/bin:$PATH
-ENV PYTHONPATH=/opt/aap-gateway/src
-ENV DJANGO_SETTINGS_MODULE=aap_gateway_api.settings
-
-COPY --from=ui-builder /ui/platform/dist /var/lib/ansible-automation-platform/platform/ui
-
-ENV GATEWAY_STATIC_ROOT=/var/lib/ansible-automation-platform/platform/ui/static
-RUN GATEWAY_SECRET_KEY_FILE=/dev/null aap-gateway-manage collectstatic --noinput && \
-    chgrp -R root /var/lib/ansible-automation-platform && \
-    chmod -R g=u /var/lib/ansible-automation-platform
+RUN GATEWAY_SECRET_KEY_FILE=/dev/null \
+    GATEWAY_STATIC_ROOT=/var/lib/ansible-automation-platform/platform/ui/static \
+    /usr/bin/aap-gateway-manage collectstatic --noinput
+RUN chown root:nginx -R /var/lib/ansible-automation-platform/platform
 
 USER gateway
 WORKDIR /opt
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-# A default command, not a constraint: init and one-shot manage containers
-# override it, which is how one image serves gateway, migrator and CLI.
-CMD ["/usr/bin/launch-gateway"]
