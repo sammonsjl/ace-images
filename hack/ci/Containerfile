@@ -1,11 +1,18 @@
 # The environment CI runs hack/prefetch.sh and hack/build.sh in. It exists
 # for one reason: the build needs `podman build --mount type=secret,env=...`
 # (buildah >= 1.44) to hand the prefetch env to every RUN step the way
-# Konflux does, and the podman in GitHub's Ubuntu runners, and in
-# quay.io/podman/stable, is older than that. Arch ships a current podman --
-# the same one the laptop these scripts were written on runs.
-FROM docker.io/library/archlinux:latest
-RUN pacman -Syu --noconfirm podman fuse-overlayfs git python skopeo && \
-    pacman -Scc --noconfirm && \
-    printf '[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' > /etc/containers/storage.conf
+# Konflux does, and the podman on GitHub's Ubuntu runners, and in
+# quay.io/podman/stable, is older than that. Fedora 45 ships podman 6.1 /
+# buildah 1.45, for both amd64 and arm64.
+#
+# It runs as a privileged container inside the runner's docker, so podman in
+# here leaves cgroups to the outer engine and stores layers with
+# fuse-overlayfs.
+FROM registry.fedoraproject.org/fedora:45
+RUN dnf install -y --setopt=install_weak_deps=0 podman fuse-overlayfs git-core python3 skopeo && \
+    dnf clean all && \
+    printf '[containers]\ncgroups = "disabled"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' \
+      > /etc/containers/containers.conf && \
+    printf '[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' \
+      > /etc/containers/storage.conf
 WORKDIR /repo
