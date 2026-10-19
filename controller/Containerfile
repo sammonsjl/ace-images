@@ -32,8 +32,8 @@ COPY system-certifi/ /src/system-certifi/
 # (MANIFEST.in excludes it from the sdist), and while it is importable AWX
 # runs in development mode, where its task manager never schedules a job.
 RUN python3.12 -m venv /var/lib/awx/venv/awx && \
-    /var/lib/awx/venv/awx/bin/pip install --no-cache-dir -r /tmp/requirements.txt && \
-    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
+    /var/lib/awx/venv/awx/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
     SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AWX_PLUGINS_INTERFACES=0.0.1a6 \
     SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AWX_PLUGINS_CORE=0.1.dev0 \
       /var/lib/awx/venv/awx/bin/pip install --no-cache-dir --no-deps \

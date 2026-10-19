@@ -64,7 +64,10 @@ if [ -d "$prefetched/deps/rpm/$arch" ]; then
 fi
 chmod -R u+w,go+rwX "$work"
 
-args=(--network none --pull=never --no-cache -f "$image/Containerfile" -t "localhost/ace-${image}:${tag}")
+# --no-cache, as Konflux builds; ACE_LAYER_CACHE=1 keeps the layer cache, for
+# iterating on a Containerfile without recompiling everything above the change.
+cache=(--no-cache); [ "${ACE_LAYER_CACHE:-}" = 1 ] && cache=()
+args=(--network none --pull=never "${cache[@]}" -f "$image/Containerfile" -t "localhost/ace-${image}:${tag}")
 args+=(--volume "$work/output:/cachi2/output:z")
 repos="$work/output/deps/rpm/$arch/repos.d"
 [ -d "$repos" ] && args+=(--volume "$repos:/etc/yum.repos.d:z")

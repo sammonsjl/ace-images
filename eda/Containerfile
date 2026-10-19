@@ -21,8 +21,8 @@ COPY system-certifi/ /src/system-certifi/
 # from tags are given: the DAB release the vendor ships, and eda-server's own
 # pyproject version (poetry-core reads that itself).
 RUN PIP_CONSTRAINT=/tmp/build-constraints.txt \
-      python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt && \
-    SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
+      python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
       python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/django-ansible-base && \
     python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/eda-server && \
     python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/system-certifi
