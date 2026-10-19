@@ -13,14 +13,15 @@ FROM registry.access.redhat.com/ubi9/ubi:9.8 AS wheels
 RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc \
       libpq-devel krb5-devel openssl-devel libffi-devel rust cargo && \
     dnf clean all
-COPY requirements.txt /tmp/requirements.txt
+COPY requirements.txt build-constraints.txt /tmp/
 COPY django-ansible-base/ /src/django-ansible-base/
 COPY src/ /src/eda-server/
 COPY system-certifi/ /src/system-certifi/
 # Neither submodule has its .git, so the versions setuptools-scm would read
 # from tags are given: the DAB release the vendor ships, and eda-server's own
 # pyproject version (poetry-core reads that itself).
-RUN python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt && \
+RUN PIP_CONSTRAINT=/tmp/build-constraints.txt \
+      python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt && \
     SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
       python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/django-ansible-base && \
     python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/eda-server && \

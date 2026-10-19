@@ -1,0 +1,5 @@
+# Applied to every isolated build environment (PIP_CONSTRAINT reaches them).
+# Some pinned sdists still import pkg_resources from setup.py
+# (websocket-client 1.5.1), which setuptools 82 removed; the newest
+# setuptools the prefetch holds would otherwise be chosen for them.
+setuptools<82
