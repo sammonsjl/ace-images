@@ -1,94 +1,95 @@
 # ace-images
 
-Image factory for **ACE** — an upstream, open-source mirror of an AAP-style
-automation platform. This repo builds every container image the platform runs
-and publishes them to GHCR as multi-arch manifests.
+The container images of an AAP-style automation platform, built **from
+upstream source, the way Red Hat builds its AAP images**: hermetically, in the
+manner of Konflux. Each Containerfile's final stage follows, step by step, the
+final stage recorded in the history of the Red Hat image it stands in for.
 
-Everything is built from **upstream source at pinned commits**. No files are
-copied out of any vendor bundle or private image: the upstream repositories are
-cloned at a fixed ref at build time, and the build replicates the *end state* of
-the official images without deriving from them. See [`NOTICE`](NOTICE).
+It is the companion of [AWX the Hard Way](https://github.com/sammonsjl/awx-the-hard-way),
+which lays the same components down on virtual machines, following the same
+steps by hand. This repo is those steps written as Containerfiles.
+
+Nothing is copied out of a vendor image or bundle. The vendor images were
+read — their history, their package lists, their file layout — and these
+Containerfiles were written to do the same things, in the same order, from
+public sources. See [`NOTICE`](NOTICE).
+
+## How an image is built
+
+Red Hat builds each AAP image in Konflux, in three moves. So does this repo.
+
+1. **Prefetch** — `hack/prefetch.sh <image>`. [Hermeto](https://github.com/hermetoproject/hermeto)
+   reads `<image>/hermeto.json` and downloads every dependency up front: Python
+   packages as **sources only**, the tools it takes to build them, Go modules,
+   npm packages, and the exact RPMs, each checked against its lockfile.
+2. **Build, with no network** — `hack/build.sh <image>`. `podman build --network none`,
+   with the prefetched tree mounted at `/cachi2/output`, its RPM repos mounted
+   over `/etc/yum.repos.d`, and its environment (`PIP_NO_INDEX`,
+   `PIP_FIND_LINKS`, `GOMODCACHE`, `CARGO_HOME`, ...) handed to every `RUN` step
+   as secret env mounts — exactly as Konflux's build does it with buildah 1.44,
+   which is why neither these Containerfiles nor Red Hat's history mention it.
+   Builder stages compile wheels, binaries and consoles; the final stage
+   installs their output with `pip install --no-index`.
+3. **Compare** — `python3 hack/diff-history.py localhost/ace-<image>:dev <vendor image>`
+   lines the final stage up against the vendor's, step by step.
+
+What you need: podman 6 (buildah 1.44, for the env mounts). Lockfiles are
+regenerated with `hack/lock.sh <image>`, which runs pip-compile, pybuild-deps
+and rpm-lockfile-prototype in a toolbox image (`hack/tools/`). Execution and
+decision environments are generated from their `execution-environment.yml` by
+`hack/ee-create.sh <image>`, the ansible-builder way.
 
 ## The images
 
-| Image | Built from | Why we build it |
+| Image | Upstream (pinned submodule) | Stands in for |
 |---|---|---|
-| `ace-gateway` | [`jewel`](https://github.com/ansible/jewel) + [`ansible-ui`](https://github.com/ansible/ansible-ui) | Both published images are **private**. The gateway app and the unified console are baked into one image. |
-| `ace-controller` | [`awx`](https://github.com/ansible/awx) | `quay.io/ansible/awx` is frozen at 24.6.1 (Jul 2024), which predates the gateway / django-ansible-base resource-server integration this platform depends on. |
-| `ace-hub` | [`galaxy_ng`](https://github.com/ansible/galaxy_ng) on `pulp/base` | `quay.io/ansible/galaxy-ng` is amd64-only; `pulp/pulp-galaxy-ng` is abandoned. |
-| `ace-eda` | [`eda-server`](https://github.com/ansible/eda-server) | Built from source on principle, so the whole control plane has one provenance story. |
-| `ace-receptor` | [`receptor`](https://github.com/ansible/receptor) | Matches `receptor-rhel9`: release tag, `podman-remote` driving the host's podman. |
-| `ace-ee-minimal` | ansible-core + ansible-runner | The execution environment jobs actually run in. |
-| `ace-de-supported` | ansible-rulebook + JVM | The decision environment EDA rulebooks run in. |
-| `ace-git-server` | `git-daemon` on EL9 | EDA rejects `file://` and cannot shallow-clone over dumb HTTP, so labs need a `git://` origin. |
+| `ace-receptor` | receptor `v1.6.7` | `receptor-rhel9` |
+| `ace-gateway` | jewel, ansible-ui, django-ansible-base, system-certifi | `gateway-rhel9` |
+| `ace-controller` | awx, awx-plugins, awx_plugins.interfaces, django-ansible-base, system-certifi | `controller-rhel9` |
+| `ace-hub` | galaxy_ng, django-ansible-base, system-certifi | `hub-rhel9` |
+| `ace-eda` | eda-server, django-ansible-base, system-certifi | `eda-controller-rhel9` |
+| `ace-ee-minimal` | (ansible-builder) | `ee-minimal-rhel9` |
+| `ace-de-minimal` | (ansible-builder) | `de-minimal-rhel9` |
+| `ace-de-supported` | (ansible-builder), FROM `ace-de-minimal` | `de-supported-rhel9` |
+| `ace-git-server` | — | (a lab helper: a `git://` origin for EDA projects) |
 
-**Deliberately not built:** envoy (building it means bazel and hours — the
-upstream release binary is enough), PostgreSQL, Redis, and the nginx that fronts
-hub and EDA. None of them is the lesson, and all are configured by mounted files.
+Red Hat builds from release tags on private branches; the submodules sit at
+the public commit nearest each one, found by hashing the vendor's installed
+source against upstream history. `system-certifi` is Red Hat's own public
+stand-in for `certifi`, which hands Python the system's CA bundle.
 
-## Base images
+Every image is `ubi9-minimal` at the end, with `ubi9` builder stages. The few
+build-time packages UBI lacks (`xmlsec1-devel` and friends) come from CentOS
+Stream 9, restricted to exactly those names (`hack/centos-stream9.repo`).
 
-**Realigning to the vendor images (branch `realign/vendor-match`, started
-2026-10-19).** Each image is being rebuilt to match its Red Hat counterpart:
-`ubi9-minimal`, release refs, wheels built from source and installed with
-`--no-index`. Done so far: `ace-receptor`. The others still build as described
-below.
+## Layout of an image directory
 
-Six of the remaining seven are `quay.io/centos/centos:stream9` end to end. `node:20`
-(gateway console) and `golang` (receptor) appear only in build stages that are
-thrown away, so nothing but EL9 ships.
-
-`ace-hub` is the exception: it builds on `docker.io/pulp/base:3.117`, pulp's own
-multi-arch image — CentOS Stream 10 on Python 3.12.
-
-**Pin it, and pin it for the interpreter, not the pulpcore version.** `:latest`
-moves daily and must not be used. But the tag to pin to is decided by Python:
-`galaxy_ng`'s lockfile pins `ansible-core==2.21.0`, which requires Python 3.12,
-so the Stream 9 / Python 3.11 lines (3.105 and earlier) cannot satisfy it at
-all. The base then ships pulpcore 3.117 and the lockfile constraints pull it
-back to the 3.105.x galaxy_ng wants — the base supplies the platform and the
-interpreter, the lockfile supplies the versions.
-
-## Pinned by default, latest on demand
-
-Every upstream ref is an `ARG` at the top of its Containerfile, holding a commit
-SHA rather than a branch, so an image built on its own is reproducible. The one
-deliberate exception is `build-all`, which exists to pick up whatever upstream
-has merged since — see [Building](#building).
-
-Override per build:
-
-```bash
-podman build -t localhost/ace-controller:dev \
-  --build-arg AWX_REF=<sha> controller/
+```
+<image>/
+  Containerfile            builder stage(s) + the final stage that follows the vendor's
+  src/ ...                 git submodules: upstream sources, pinned
+  requirements.in/.txt     Python, pinned (and hashed in .txt)
+  requirements-build*.txt  what it takes to build those from source
+  rpms.in.yaml/.lock.yaml  every RPM, both arches
+  hermeto.json             the prefetch input (Konflux's prefetch-input)
+  lock-pre.sh / lock-post.sh   where an image's pins come from elsewhere (poetry, galaxy_ng)
+  NOTES.md                 what was learned building it
 ```
 
-Each workflow exposes the same refs as `workflow_dispatch` inputs; leaving them
-blank uses the Containerfile defaults. CI resolves whatever ref it built to a
-commit and stamps it into the image as an OCI label, so `podman inspect` on any
-published tag tells you exactly what is inside it.
+## Refreshing an image
 
-Every directory carries a `NOTES.md` recording what was learned building that
-image — why receptor empties `/etc/subuid`, why `galaxy_ng` must build from
-`main` and not `master`, why AWX needs `SETUPTOOLS_SCM_PRETEND_VERSION`. Read it
-before changing a Containerfile.
+Bump its submodule(s) and/or `*.in` files, run `hack/lock.sh <image>`, build,
+compare, commit the new lockfiles. A build that stops at "No matching
+distribution" is missing a build requirement pybuild-deps could not see;
+`hack/record-build-deps.sh <image>` finds it.
 
-## Building
+## CI
 
-CI builds each image on pushes to `main` touching its directory, or on manual
-dispatch, from the Containerfile's pinned refs. Those builds are tagged
-`:<date>-<sha>` (this repo's commit) and `:latest`.
+Each image's workflow (and `build-all`, which builds them all under one
+`<date>-r<run>` tag) runs `hack/prefetch.sh` and `hack/build.sh` inside the
+`hack/ci` image — Fedora 45, for its podman 6 — on native amd64 and arm64
+runners, pushes by digest, and assembles a multi-arch manifest. Only `main`
+moves `:latest`. Images are on `ghcr.io/sammonsjl/ace-<image>`.
 
-**`build-all` rebuilds everything from the latest upstream.** Run it by hand
-whenever you want fresh images. Its first job reads the current head of every
-upstream branch once — `jewel`, `ansible-ui`, `awx`, `galaxy_ng`, `eda-server`,
-`receptor` and `django-ansible-base` — and all eight images are built from
-those same commits. The gateway and the hub are given the **same** DAB commit,
-because the hub has to accept the tokens the gateway signs. The run's summary
-lists every commit, and each image carries its own in the `ace.source.ref` label.
-
-A `build-all` run tags every image with one shared `:<date>-r<run number>`, plus
-`:latest`. The run number keeps the tag unique: two "latest" builds on the same
-day are different images and must never share a tag. Pin that one tag in
-anything that consumes the images — the containerized installer's
-`ace_image_tag`, or the operator's `ace_image_tag` / per-image `image:` fields.
+**Not built here:** envoy, PostgreSQL and Redis. They are not the lesson, and
+all are configured by mounted files.

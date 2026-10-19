@@ -19,16 +19,22 @@ made to any trademark.
 PROVENANCE
 ----------
 
-Every container image in the ACE project is built from upstream, Apache-2.0
-licensed source, cloned at a pinned commit at build time:
+Every container image in the ACE project is built from upstream, publicly
+licensed source, included as git submodules pinned to a commit:
 
-  ansible/jewel, ansible/ansible-ui, ansible/awx, ansible/galaxy_ng,
-  ansible/eda-server, ansible/receptor, ansible/django-ansible-base
+  ansible/jewel, ansible/ansible-ui, ansible/awx, ansible/awx-plugins,
+  ansible/awx_plugins.interfaces, ansible/galaxy_ng, ansible/eda-server,
+  ansible/receptor, ansible/django-ansible-base, ansible/system-certifi
+
+and from the third-party packages their lockfiles name, fetched as source.
 
 Red Hat's own distribution of this platform was examined as a BEHAVIORAL
 SPECIFICATION only: to learn what the official images and installer produce,
-so that an equivalent end state could be written independently. Observing a
-released artifact and describing what it does is the whole of that exercise.
+and in what order the official images are put together (their build history
+is part of every published image), so that equivalent images could be
+written independently. The Containerfiles follow those steps in their own
+words. Observing a released artifact and describing what it does is the
+whole of that exercise.
 
 No Red Hat file, template, role, playbook, manifest, or configuration has
 been copied into this project, and no vendor distribution is redistributed
