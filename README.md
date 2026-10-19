@@ -17,7 +17,7 @@ the official images without deriving from them. See [`NOTICE`](NOTICE).
 | `ace-controller` | [`awx`](https://github.com/ansible/awx) | `quay.io/ansible/awx` is frozen at 24.6.1 (Jul 2024), which predates the gateway / django-ansible-base resource-server integration this platform depends on. |
 | `ace-hub` | [`galaxy_ng`](https://github.com/ansible/galaxy_ng) on `pulp/base` | `quay.io/ansible/galaxy-ng` is amd64-only; `pulp/pulp-galaxy-ng` is abandoned. |
 | `ace-eda` | [`eda-server`](https://github.com/ansible/eda-server) | Built from source on principle, so the whole control plane has one provenance story. |
-| `ace-receptor` | [`receptor`](https://github.com/ansible/receptor) | Ships podman *in* the image, so nothing has to be bind-mounted from the host. |
+| `ace-receptor` | [`receptor`](https://github.com/ansible/receptor) | Matches `receptor-rhel9`: release tag, `podman-remote` driving the host's podman. |
 | `ace-ee-minimal` | ansible-core + ansible-runner | The execution environment jobs actually run in. |
 | `ace-de-supported` | ansible-rulebook + JVM | The decision environment EDA rulebooks run in. |
 | `ace-git-server` | `git-daemon` on EL9 | EDA rejects `file://` and cannot shallow-clone over dumb HTTP, so labs need a `git://` origin. |
@@ -28,7 +28,13 @@ hub and EDA. None of them is the lesson, and all are configured by mounted files
 
 ## Base images
 
-Seven of the eight are `quay.io/centos/centos:stream9` end to end. `node:20`
+**Realigning to the vendor images (branch `realign/vendor-match`, started
+2026-10-19).** Each image is being rebuilt to match its Red Hat counterpart:
+`ubi9-minimal`, release refs, wheels built from source and installed with
+`--no-index`. Done so far: `ace-receptor`. The others still build as described
+below.
+
+Six of the remaining seven are `quay.io/centos/centos:stream9` end to end. `node:20`
 (gateway console) and `golang` (receptor) appear only in build stages that are
 thrown away, so nothing but EL9 ships.
 

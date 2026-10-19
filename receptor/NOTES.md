@@ -4,36 +4,72 @@ The execution mesh node.
 
 | | |
 |---|---|
-| Source | [ansible/receptor](https://github.com/ansible/receptor) |
-| Built in | [Lab 7](../../docs/07-execution.md) |
-| Status | **built** (2026-08-27) — `Containerfile` in this directory |
+| Source | [ansible/receptor](https://github.com/ansible/receptor), tag `v1.6.7` |
+| Matches | `receptor-rhel9` from the AAP 2.7-6 containerized bundle |
+| Status | **realigned** (2026-10-19) |
 
-A Go build — the simplest Containerfile in the tutorial, and the one running the hardest lab. Serves 27199 and owns the control socket the controller hands signed work units to.
+A Go build. Serves 27199 and owns the control socket the controller hands
+signed work units to. receptor's work-command is `ansible-runner worker`, so
+ansible-runner is installed here too, not only in the EE.
 
-**Answered 2026-08-27: the image carries its own podman.** Mounting the host's
-binary fails at exec with `libsubid.so.6: cannot open shared object file` —
-the host binary is linked against libraries the image does not have. receptor
-reports this as `Exceeded retries for reading stdout`, because from its side
-the work command produced nothing.
+## Realigned to the vendor image, 2026-10-19
 
-ansible-runner is installed here too: receptor's work-command is
-`ansible-runner worker`, so the runner lives in receptor's filesystem, not just
-in the EE.
+Rebuilt to match `receptor-rhel9` (AAP 2.7-6) as observed from the outside:
+image history, RPM database, pip dist-info and the Go build info in the
+binary. Nothing was copied out of the vendor image. The comparison is in the
+vault: `03 Projects/ACE/(C) ace-images vs Red Hat Builds.md`.
 
-## Corrected 2026-08-28
+After the rebuild, the vendor image and this one have the same 118 RPMs, the
+same 9 Python packages at the same versions, the same user, entrypoint and
+command, and the same `receptor --version` (`v1.6.7+gitf5b7f8f`). Both
+filesystems are 263 MB. The vendor image is squashed into one layer and this
+one is not, which is why `podman images` shows 267 MB against 281 MB.
 
-Tracks `devel`, which needs Go 1.25 and `GOFLAGS=-buildvcs=false` (the build
-runs on a shallow clone). Cross-checked against `receptor-rhel9`: uid 1000,
-dumb-init as PID 1, `receptor -c /etc/receptor/receptor.conf` as the command.
-The vendor's image has ansible-runner but no podman — it mounts the host's.
+What it took:
 
-## Verified 2026-09-10
+- **Base:** `ubi9-minimal`, with `microdnf --nodocs --setopt=install_weak_deps=0`.
+  The packages are `python3.12`, `python3.12-pip` and **`podman-remote`**.
+- **Ref:** tag `v1.6.7`, not `devel`.
+- **Binary:** built with CGO on, using the Go from UBI AppStream, so crypto
+  goes through the system OpenSSL and its FIPS provider. The binary is linked
+  against libc, stripped, and has the version in `-ldflags`. It is built from
+  a tree without `.git`, so it carries no VCS stamp. The Makefile's target is
+  not used, because it forces `CGO_ENABLED=0`, and with CGO off RHEL's Go
+  switches to its native FIPS module instead.
+- **Wheels:** every wheel is built from its sdist, without build isolation,
+  against the build backends in `build-requirements.txt` (setuptools 82.0.1,
+  flit_core 3.12.0: what the vendor's `WHEEL` files name). The runtime
+  installs them with `--no-index --prefix /usr`. libyaml-devel is left out on
+  purpose, so PyYAML has no C loader, as in the vendor image.
+- **Versions:** `constraints.txt` is the vendor's `pip freeze`.
 
-Builds and runs. Confirmed in the image: podman 5.8.5, ansible-runner 2.4.3,
-receptorctl, and `/etc/subuid` emptied to 0 bytes so the inner rootless podman
-falls back to single-UID mode.
+## podman-remote, not podman
 
-`receptor --version` prints nothing and exits 0. That is expected, not a broken
-build: the Go build uses `-buildvcs=false` because the shallow clone carries no
-usable VCS metadata, so the version string is never stamped. Use the
-`ace.source.ref` OCI label CI applies to find out what commit is inside.
+This image has no `podman`, only `podman-remote`. Jobs run in the **host's**
+rootless podman, through its API socket. The containerized installer mounts
+three things:
+
+- the socket, at `/run/user/<uid>/podman/podman.sock`, with
+  `CONTAINER_HOST` pointing at it;
+- a two-line `/usr/bin/podman` wrapper that execs `podman-remote`, because
+  ansible-runner calls `podman`;
+- the job directories, at the **same path** on both sides, because the host
+  podman resolves bind-mount paths on the host.
+
+That is the vendor's arrangement. It replaces the in-image rootless podman
+used until 2026-10-19, which needed fuse-overlayfs, an emptied `/etc/subuid`
+and a pre-owned `/home/runner`.
+
+**receptorctl is gone too**, because the vendor image has none. The installer
+waits on the control socket instead of on `receptorctl status`.
+
+Checked on 2026-10-19 on the laptop. A work unit was submitted to this image
+through its control socket and ran `ansible-runner worker`, which started an
+`ace-ee-minimal` container through the host's podman and returned
+`hello from the EE`, `ok=1`.
+
+## History
+
+- 2026-08-27: built from `devel` on CentOS Stream 9 with podman in the image.
+  The 2026-08-28 note claimed the vendor image had "no podman". That was
+  wrong: it ships `podman-remote`.

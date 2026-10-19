@@ -1,66 +1,77 @@
 # ACE receptor — the execution mesh node, built from upstream Go source.
 #
-# Built before the controller, not after: AWX's own image copies the receptor
-# binary in from a receptor image rather than compiling it, and this build does
-# the same.
+# Shaped like receptor-rhel9 (AAP 2.7): ubi9-minimal, receptor from a release
+# tag, ansible-runner and dumb-init installed from wheels into /usr, and
+# podman-remote rather than podman. Jobs run in the HOST's podman, reached
+# through its API socket; the installer mounts the socket and a two-line
+# /usr/bin/podman wrapper that execs podman-remote. See NOTES.md.
 
-ARG RECEPTOR_REF=f9be10658742c64ce639518e0112cdf416f46159           # ansible/receptor devel @ 2026-09-10
-ARG GO_VERSION=1.25
+ARG RECEPTOR_REF=f5b7f8fee9b5a0692a4f0ced4ae6de1c35b3725e           # ansible/receptor tag v1.6.7
+ARG RECEPTOR_VERSION=v1.6.7+gitf5b7f8f                               # what receptor-rhel9 2.7 reports
+ARG UBI_VERSION=9.8
 
 ###############################################################################
-# Stage 1 — compile
+# Stage 1 — compile, with the Go from UBI AppStream (receptor's own
+# packaging/container/Dockerfile does the same)
 ###############################################################################
-FROM docker.io/library/golang:${GO_VERSION} AS builder
+FROM registry.access.redhat.com/ubi9/ubi:${UBI_VERSION} AS builder
 ARG RECEPTOR_REF
+ARG RECEPTOR_VERSION
+RUN dnf install -y --nodocs golang gcc binutils git-core && dnf clean all
 WORKDIR /src
-RUN git clone https://github.com/ansible/receptor.git . && git checkout "${RECEPTOR_REF}"
-# Matches the flags receptor's own Makefile uses. -buildvcs=false is required:
-# the build runs on a shallow clone with no usable VCS metadata.
-RUN CGO_ENABLED=0 GOFLAGS="-buildvcs=false" go build -o /out/receptor ./cmd/receptor-cl
+# .git goes once the ref is checked out: the vendor binary carries no VCS
+# stamp, which is what a build from a source tree without .git produces.
+RUN git clone https://github.com/ansible/receptor.git . && \
+    git checkout "${RECEPTOR_REF}" && rm -rf .git
+# Not the Makefile's target: it forces CGO_ENABLED=0, and with CGO off RHEL's
+# Go switches to its native FIPS module. receptor-rhel9's binary is built with
+# CGO on, so its crypto goes through the system OpenSSL (the FIPS provider is
+# in the image), and is dynamically linked against libc. Stripped afterwards;
+# the only -ldflags is the version stamp, as in the vendor's build info.
+RUN CGO_ENABLED=1 go build -o receptor \
+      -ldflags "-X 'github.com/ansible/receptor/internal/version.Version=${RECEPTOR_VERSION}'" \
+      ./cmd/receptor-cl && \
+    strip receptor
 
 ###############################################################################
-# Stage 2 — runtime
+# Stage 2 — wheels. Versions come from constraints.txt, which matches the
+# Python packages receptor-rhel9 ships.
 ###############################################################################
-FROM quay.io/centos/centos:stream9
-# podman is installed here rather than mounted from the host. The vendor's
-# installer mounts a host binary, which only works if the container carries the
-# libraries that binary was linked against — mounting /usr/bin/podman straight
-# in fails at exec with `libsubid.so.6: cannot open shared object file`, and
-# receptor reports that as a missing work-unit status file.
-# dumb-init lives in EPEL, not the base repos — the same trap as the EDA image.
-RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
-    dnf install -y python3.12 python3.12-pip podman fuse-overlayfs dumb-init && \
-    dnf clean all && \
-    pip3.12 install --no-cache-dir receptorctl ansible-runner
+# Every wheel is built from its sdist, never a manylinux binary, and without
+# build isolation: the build backends are installed once, at the versions that
+# generated the vendor's wheels (their WHEEL files say setuptools 82.0.1 and
+# flit 3.12.0, with linux_x86_64 tags). libyaml-devel is deliberately absent,
+# so PyYAML builds without its C loader, as the vendor's does
+# (yaml.__with_libyaml__ is False there).
+FROM registry.access.redhat.com/ubi9/ubi:${UBI_VERSION} AS wheels
+RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc && dnf clean all
+COPY constraints.txt build-requirements.txt /tmp/
+RUN python3.12 -m pip install --no-cache-dir -r /tmp/build-requirements.txt && \
+    python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels \
+      --no-build-isolation --no-binary :all: \
+      -c /tmp/constraints.txt ansible-runner dumb-init
 
-COPY --from=builder /out/receptor /usr/bin/receptor
+###############################################################################
+# Stage 3 — runtime
+###############################################################################
+FROM registry.access.redhat.com/ubi9/ubi-minimal:${UBI_VERSION}
+RUN microdnf update --nodocs --setopt=install_weak_deps=0 -y && \
+    microdnf install --nodocs --setopt=install_weak_deps=0 -y \
+      python3.12 python3.12-pip podman-remote && \
+    microdnf clean all
 
-# /home/runner is podman's HOME inside this container, so it must be owned by
-# the uid the container actually runs as — with keep-id that is the host user's,
-# 1000. Group-root alone is not enough: podman refuses a config directory it
-# does not own outright ("exists and it is not owned by the current user").
-RUN mkdir -p /etc/receptor /var/lib/receptor /run/receptor \
-             /home/runner/.config /home/runner/.local/share && \
-    chgrp -R 0 /etc/receptor /var/lib/receptor /run/receptor && \
-    chmod -R g=u /etc/receptor /var/lib/receptor /run/receptor && \
-    chown -R 1000:0 /home/runner && chmod -R g=u /home/runner
+COPY --from=builder /src/receptor /usr/bin/receptor
 
-RUN useradd -u 1000 -g 0 -d /home/runner -M -s /bin/bash runner 2>/dev/null || true
+# No index: everything comes from the wheels stage, nothing from PyPI.
+RUN --mount=type=bind,from=wheels,source=/wheels,target=/tmp/wheels \
+    python3.12 -m pip install --no-cache-dir --no-index --find-links /tmp/wheels \
+      --prefix /usr ansible-runner dumb-init
 
-# useradd hands the new user a subuid/subgid range, and the podman inside
-# this container will try to use it. It cannot: newuidmap is not setuid here,
-# and the outer namespace has exactly one UID mapped anyway, so the attempt
-# fails with `newuidmap: write to uid_map failed: Operation not permitted`.
-# Take the ranges away and the inner podman falls back to single-UID mode,
-# which is the arrangement ignore_chown_errors exists to accommodate.
-RUN : > /etc/subuid && : > /etc/subgid
-
-ENV HOME=/home/runner
+ENV container=oci
 USER 1000
-WORKDIR /
 
-# dumb-init as PID 1, like every vendor image. receptor spawns ansible-runner
-# which spawns podman which spawns a job; without an init that reaps, the
-# container accumulates zombies over a long-running mesh node.
+# dumb-init as PID 1: receptor spawns ansible-runner, which spawns
+# podman-remote; without an init that reaps, a long-running mesh node
+# accumulates zombies.
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["/usr/bin/receptor", "-c", "/etc/receptor/receptor.conf"]

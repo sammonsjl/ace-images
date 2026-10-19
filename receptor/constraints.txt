@@ -1,0 +1,9 @@
+# The Python packages in receptor-rhel9 (AAP 2.7-6), names and versions only.
+ansible-runner==2.4.3
+dumb-init==1.2.5.post1
+lockfile==0.12.2
+packaging==26.3
+pexpect==4.9.0
+ptyprocess==0.7.0
+python-daemon==3.1.2
+PyYAML==6.0.3
