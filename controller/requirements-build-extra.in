@@ -3,3 +3,9 @@
 # system-certifi (setuptools).
 setuptools>=64
 setuptools-scm>=8,<10
+# scikit-build-core asks for these at build time (for rapidfuzz, and others),
+# which pybuild-deps cannot see. Both are build tools that never reach an
+# image, and both are taken as wheels (hermeto.json's binary filter): their
+# sdists build CMake and Ninja themselves.
+cmake>=3.15
+ninja

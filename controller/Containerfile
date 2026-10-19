@@ -12,6 +12,10 @@
 # Builder: the venv. PIP_NO_INDEX/PIP_FIND_LINKS come from the prefetch.
 ###############################################################################
 FROM registry.access.redhat.com/ubi9/ubi:9.8 AS venv
+# The few build headers UBI lacks come from CentOS Stream (hack/centos-stream9.repo),
+# signed with CentOS's key, which ubi9 does not carry.
+COPY RPM-GPG-KEY-centosofficial /etc/pki/rpm-gpg/
+RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
 RUN dnf module enable -y postgresql:15 && \
     dnf install -y --nodocs python3.12 python3.12-devel gcc gcc-c++ make pkgconf-pkg-config \
       libpq-devel krb5-devel libffi-devel openssl-devel libxml2-devel libxslt-devel \

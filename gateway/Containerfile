@@ -13,6 +13,10 @@
 # Builder: wheels. PIP_NO_INDEX/PIP_FIND_LINKS come from the prefetch.
 ###############################################################################
 FROM registry.access.redhat.com/ubi9/ubi:9.8 AS wheels
+# The few build headers UBI lacks come from CentOS Stream (hack/centos-stream9.repo),
+# signed with CentOS's key, which ubi9 does not carry.
+COPY RPM-GPG-KEY-centosofficial /etc/pki/rpm-gpg/
+RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-centosofficial
 RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc gcc-c++ make \
       pkgconf-pkg-config libpq-devel openldap-devel libxml2-devel libxslt-devel \
       xmlsec1-devel xmlsec1-openssl-devel libtool-ltdl-devel openssl-devel libffi-devel \

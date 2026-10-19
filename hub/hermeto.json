@@ -1,6 +1,23 @@
 [
-  {"type": "pip", "path": "hub",
-   "requirements_files": ["requirements.txt"],
-   "requirements_build_files": ["requirements-build.txt", "requirements-build-extra.txt"]},
-  {"type": "rpm", "path": "hub"}
+  {
+    "type": "pip",
+    "path": "hub",
+    "requirements_files": [
+      "requirements.txt"
+    ],
+    "requirements_build_files": [
+      "requirements-build.txt",
+      "requirements-build-extra.txt"
+    ],
+    "binary": {
+      "packages": "uv-build,cmake,ninja",
+      "arch": "x86_64,aarch64",
+      "os": "linux",
+      "py_version": 312
+    }
+  },
+  {
+    "type": "rpm",
+    "path": "hub"
+  }
 ]
