@@ -78,14 +78,16 @@ RUN python3.12 -m pip install --prefix /usr --no-cache-dir --no-index --find-lin
 
 ENV DESCRIPTION="ACE EDA: eda-server, the Event-Driven Ansible controller"
 ARG AAP_EDA_CONTROLLER_GIT_TAG=1.3.5
-LABEL name="ace-eda" \
-      version="${AAP_EDA_CONTROLLER_GIT_TAG}" \
-      summary="${DESCRIPTION}" \
-      description="${DESCRIPTION}" \
-      io.k8s.description="${DESCRIPTION}" \
-      io.k8s.display-name="ACE EDA" \
-      io.openshift.tags="ace,automation,eda,event-driven" \
-      maintainer="Jamie Sammons"
+# One LABEL per line, as the vendor's Containerfile writes them.
+LABEL name="ace-eda"
+LABEL version="${AAP_EDA_CONTROLLER_GIT_TAG}"
+LABEL vendor="ACE"
+LABEL summary="ACE EDA: a console and REST API for event-driven automation."
+LABEL description="$DESCRIPTION"
+LABEL io.k8s.description="$DESCRIPTION"
+LABEL io.k8s.display-name="ACE EDA"
+LABEL io.openshift.tags="ace,automation,eda,event-driven"
+LABEL maintainer="Jamie Sammons"
 ENV container=oci
 ENV HOME=/var/lib/ansible-automation-platform/eda
 ENV EDA_MEDIA_ROOT=/var/lib/ansible-automation-platform/eda/media
@@ -101,6 +103,5 @@ RUN EDA_SECRET_KEY=dummy EDA_STATIC_ROOT=/var/lib/ansible-automation-platform/ed
 ENV EDA_GUNICORN_WORKERS=${EDA_GUNICORN_WORKERS:-2}
 ENV EDA_GUNICORN_BIND=${EDA_GUNICORN_BIND:-0.0.0.0:8000}
 ENV EDA_GUNICORN_LOG_LEVEL=info
-CMD /bin/gunicorn --bind ${EDA_GUNICORN_BIND} --workers=${EDA_GUNICORN_WORKERS} \
-    aap_eda.wsgi:application --log-level=${EDA_GUNICORN_LOG_LEVEL}
+CMD /bin/gunicorn --bind ${EDA_GUNICORN_BIND} --workers=${EDA_GUNICORN_WORKERS} aap_eda.wsgi:application --log-level=${EDA_GUNICORN_LOG_LEVEL}
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
