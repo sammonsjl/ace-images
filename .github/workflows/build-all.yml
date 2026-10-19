@@ -137,8 +137,7 @@ jobs:
       image: receptor
       platforms: ${{ inputs.platforms }}
       tag: ${{ needs.resolve.outputs.tag }}
-      build_args: |
-        RECEPTOR_REF=${{ needs.resolve.outputs.receptor }}
+      # Hermetic: built from its pinned submodule, not the upstream head.
   ee-minimal:
     needs: resolve
     uses: ./.github/workflows/build-image.yml

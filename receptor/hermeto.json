@@ -1,0 +1,7 @@
+[
+  {"type": "gomod", "path": "receptor/src"},
+  {"type": "pip", "path": "receptor",
+   "requirements_files": ["requirements.txt"],
+   "requirements_build_files": ["requirements-build.txt", "requirements-bootstrap.txt"]},
+  {"type": "rpm", "path": "receptor"}
+]

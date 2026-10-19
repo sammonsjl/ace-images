@@ -1,0 +1,22 @@
+# The UBI 9 repositories, as the ubi9 images ship them. rpm-lockfile-prototype
+# resolves every image's rpms.in.yaml against these, so a hermetic build only
+# ever installs packages UBI can redistribute. (Red Hat's own builds resolve
+# against the entitled RHEL 9 repos; UBI is the public subset of those.)
+
+[ubi-9-baseos-rpms]
+name = Red Hat Universal Base Image 9 (RPMs) - BaseOS
+baseurl = https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/baseos/os
+enabled = 1
+gpgcheck = 0
+
+[ubi-9-appstream-rpms]
+name = Red Hat Universal Base Image 9 (RPMs) - AppStream
+baseurl = https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/appstream/os
+enabled = 1
+gpgcheck = 0
+
+[ubi-9-codeready-builder-rpms]
+name = Red Hat Universal Base Image 9 (RPMs) - CodeReady Builder
+baseurl = https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/codeready-builder/os
+enabled = 1
+gpgcheck = 0

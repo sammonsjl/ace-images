@@ -43,6 +43,29 @@ What it took:
   purpose, so PyYAML has no C loader, as in the vendor image.
 - **Versions:** `constraints.txt` is the vendor's `pip freeze`.
 
+## Built hermetically, the Konflux way (2026-10-19)
+
+The receptor source is the `src/` submodule, pinned to tag `v1.6.7`. No
+`git clone` happens during the build. Every dependency is prefetched by Hermeto
+(`hack/prefetch.sh receptor`, driven by `hermeto.json`):
+
+- Go modules for `src/`;
+- Python **sdists only**: `requirements.txt`, plus the build backends in
+  `requirements-build.txt`, plus what it takes to build those backends from
+  source (`requirements-bootstrap.txt`);
+- every RPM in `rpms.lock.yaml`, resolved against the UBI 9 repos for x86_64
+  and aarch64.
+
+`hack/build.sh receptor` then builds with `--network none`. The prefetched
+tree is mounted at `/cachi2/output`, the prefetched RPM repos replace
+`/etc/yum.repos.d`, and the prefetch env reaches every RUN step as secret env
+mounts. The Containerfile therefore has no prefetch plumbing in it, just as
+Red Hat's history shows none.
+
+`python3 hack/diff-history.py localhost/ace-receptor:dev <receptor-rhel9>`
+lines the final stage up against the vendor's: **10 of 10 steps, in order.**
+Lockfiles are regenerated with `hack/lock.sh receptor`.
+
 ## podman-remote, not podman
 
 This image has no `podman`, only `podman-remote`. Jobs run in the **host's**

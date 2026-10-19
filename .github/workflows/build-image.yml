@@ -4,6 +4,16 @@
 # builds and pushes BY DIGEST, then a merge job assembles one multi-arch
 # manifest — the only way to get a real manifest list out of parallel runners
 # on different architectures.
+#
+# Two build paths, chosen per image:
+#   hermetic  the image has a hermeto.json. Built the way Konflux builds Red
+#             Hat's images: hack/prefetch.sh fetches every dependency, then
+#             hack/build.sh builds with no network. Both run inside the
+#             hack/ci image, because they need a newer podman than the
+#             runner has (see hack/ci/Containerfile).
+#   legacy    no hermeto.json yet: the original buildx build, which clones
+#             upstream and installs from the internet. Images move to the
+#             hermetic path one at a time.
 
 name: build-image
 
@@ -51,6 +61,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Choose the build path
+        id: mode
+        run: |
+          if [ -f "${{ inputs.image }}/hermeto.json" ]; then
+            echo "hermetic=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "hermetic=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Skip platforms the caller did not ask for
         id: want
         run: |
@@ -71,7 +90,7 @@ jobs:
       # any published tag answers "what is in this?". That is the override when
       # the caller passed one (build-all always does), else the Containerfile's pin.
       - name: Resolve the upstream ref that was built
-        if: steps.want.outputs.build == 'true'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
         id: src
         env:
           BUILD_ARGS: ${{ inputs.build_args }}
@@ -86,17 +105,17 @@ jobs:
           echo "sha=${sha:-unpinned}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
-        if: steps.want.outputs.build == 'true'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
 
       - uses: docker/login-action@v3
-        if: steps.want.outputs.build == 'true'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push by digest
-        if: steps.want.outputs.build == 'true'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -116,10 +135,39 @@ jobs:
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
-        if: steps.want.outputs.build == 'true'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      # ---- hermetic path ----------------------------------------------------
+      - name: Check out the image's upstream source
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'true'
+        run: git submodule update --init --depth 1 -- "${{ inputs.image }}/src" 2>/dev/null || git submodule update --init -- "${{ inputs.image }}/src"
+
+      - name: Prefetch, build with no network, push by digest
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          src_ref=$(git -C "${{ inputs.image }}/src" rev-parse HEAD 2>/dev/null || echo none)
+          docker build -q -t ace-ci hack/ci
+          docker run --rm --privileged -v "$PWD:/repo" -e GH_TOKEN -e ACE_OUT=/var/tmp/ace-out ace-ci sh -euc '
+            git config --global --add safe.directory "*"
+            hack/prefetch.sh "${{ inputs.image }}"
+            hack/build.sh "${{ inputs.image }}" ci -- \
+              --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+              --label "org.opencontainers.image.revision=${{ github.sha }}" \
+              --label "org.opencontainers.image.licenses=Apache-2.0" \
+              --label "ace.source.ref='"$src_ref"'"
+            podman push --creds "${{ github.actor }}:$GH_TOKEN" --digestfile /repo/.digest \
+              "localhost/ace-${{ inputs.image }}:ci" \
+              "docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ env.PLATFORM_TAG }}"
+          '
+          mkdir -p /tmp/digests
+          digest=$(cat .digest)
           touch "/tmp/digests/${digest#sha256:}"
 
       - uses: actions/upload-artifact@v4
@@ -165,10 +213,12 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest \
+          # Only main moves :latest; a build from a branch gets its dated tag only.
+          latest=""
+          [ "$GITHUB_REF" = "refs/heads/main" ] && latest="-t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest"
+          docker buildx imagetools create $latest \
             -t ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }} \
             $(printf '${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}@sha256:%s ' *)
 
       - name: Inspect
-        run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:latest
+        run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}

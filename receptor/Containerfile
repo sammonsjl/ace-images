@@ -1,73 +1,73 @@
-# ACE receptor — the execution mesh node, built from upstream Go source.
+# ACE receptor: the execution mesh node, built from upstream source the way
+# receptor-rhel9 (AAP 2.7) is built. Konflux-style: hack/prefetch.sh fetches
+# every dependency, hack/build.sh builds with no network.
 #
-# Shaped like receptor-rhel9 (AAP 2.7): ubi9-minimal, receptor from a release
-# tag, ansible-runner and dumb-init installed from wheels into /usr, and
-# podman-remote rather than podman. Jobs run in the HOST's podman, reached
-# through its API socket; the installer mounts the socket and a two-line
-# /usr/bin/podman wrapper that execs podman-remote. See NOTES.md.
-
-ARG RECEPTOR_REF=f5b7f8fee9b5a0692a4f0ced4ae6de1c35b3725e           # ansible/receptor tag v1.6.7
-ARG RECEPTOR_VERSION=v1.6.7+gitf5b7f8f                               # what receptor-rhel9 2.7 reports
-ARG UBI_VERSION=9.8
+#   go      receptor from src/ (submodule at v1.6.7), CGO on
+#   wheels  every Python package from its sdist
+#   final   ubi9-minimal; the same steps, in the same order, as the vendor's
+#           final stage (see NOTES.md)
 
 ###############################################################################
-# Stage 1 — compile, with the Go from UBI AppStream (receptor's own
-# packaging/container/Dockerfile does the same)
+# Builder: receptor. Go modules come from the prefetch (GOMODCACHE/GOPROXY).
 ###############################################################################
-FROM registry.access.redhat.com/ubi9/ubi:${UBI_VERSION} AS builder
-ARG RECEPTOR_REF
-ARG RECEPTOR_VERSION
-RUN dnf install -y --nodocs golang gcc binutils git-core && dnf clean all
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS go
+RUN dnf install -y --nodocs golang gcc binutils && dnf clean all
 WORKDIR /src
-# .git goes once the ref is checked out: the vendor binary carries no VCS
-# stamp, which is what a build from a source tree without .git produces.
-RUN git clone https://github.com/ansible/receptor.git . && \
-    git checkout "${RECEPTOR_REF}" && rm -rf .git
-# Not the Makefile's target: it forces CGO_ENABLED=0, and with CGO off RHEL's
-# Go switches to its native FIPS module. receptor-rhel9's binary is built with
-# CGO on, so its crypto goes through the system OpenSSL (the FIPS provider is
-# in the image), and is dynamically linked against libc. Stripped afterwards;
-# the only -ldflags is the version stamp, as in the vendor's build info.
+COPY src/ .
+# CGO on: RHEL's Go then uses the system OpenSSL (and its FIPS provider) for
+# crypto, as the vendor binary does. Stripped; the version is the only -X.
+ARG RECEPTOR_VERSION=v1.6.7+gitf5b7f8f
 RUN CGO_ENABLED=1 go build -o receptor \
       -ldflags "-X 'github.com/ansible/receptor/internal/version.Version=${RECEPTOR_VERSION}'" \
       ./cmd/receptor-cl && \
     strip receptor
 
 ###############################################################################
-# Stage 2 — wheels. Versions come from constraints.txt, which matches the
-# Python packages receptor-rhel9 ships.
+# Builder: wheels. PIP_NO_INDEX and PIP_FIND_LINKS come from the prefetch, so
+# pip sees only the sdists Hermeto fetched. The build backends go in first and
+# everything is built against them without isolation, which is why every
+# vendor wheel names the same generator (setuptools 82.0.1, flit 3.12.0).
 ###############################################################################
-# Every wheel is built from its sdist, never a manylinux binary, and without
-# build isolation: the build backends are installed once, at the versions that
-# generated the vendor's wheels (their WHEEL files say setuptools 82.0.1 and
-# flit 3.12.0, with linux_x86_64 tags). libyaml-devel is deliberately absent,
-# so PyYAML builds without its C loader, as the vendor's does
-# (yaml.__with_libyaml__ is False there).
-FROM registry.access.redhat.com/ubi9/ubi:${UBI_VERSION} AS wheels
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS wheels
 RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc && dnf clean all
-COPY constraints.txt build-requirements.txt /tmp/
-RUN python3.12 -m pip install --no-cache-dir -r /tmp/build-requirements.txt && \
-    python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels \
-      --no-build-isolation --no-binary :all: \
-      -c /tmp/constraints.txt ansible-runner dumb-init
+COPY requirements.txt requirements-build.txt /tmp/
+RUN python3.12 -m pip install --no-cache-dir -r /tmp/requirements-build.txt && \
+    python3.12 -m pip wheel --no-cache-dir --no-build-isolation \
+      --wheel-dir /wheels -r /tmp/requirements.txt
 
 ###############################################################################
-# Stage 3 — runtime
+# Final stage
 ###############################################################################
-FROM registry.access.redhat.com/ubi9/ubi-minimal:${UBI_VERSION}
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
+
+ARG RECEPTOR_SRC_GIT_TAG=1.6.7
+
 RUN microdnf update --nodocs --setopt=install_weak_deps=0 -y && \
     microdnf install --nodocs --setopt=install_weak_deps=0 -y \
-      python3.12 python3.12-pip podman-remote && \
+      python3.12 \
+      python3.12-pip \
+      podman-remote && \
     microdnf clean all
 
-COPY --from=builder /src/receptor /usr/bin/receptor
+COPY --from=go /src/receptor /usr/bin/receptor
+COPY --from=wheels /wheels /tmp/wheels
 
-# No index: everything comes from the wheels stage, nothing from PyPI.
-RUN --mount=type=bind,from=wheels,source=/wheels,target=/tmp/wheels \
-    python3.12 -m pip install --no-cache-dir --no-index --find-links /tmp/wheels \
-      --prefix /usr ansible-runner dumb-init
+RUN python3.12 -m pip install --no-cache-dir --no-index --find-links /tmp/wheels \
+      --prefix /usr ansible-runner dumb-init && \
+    rm -rf /tmp/wheels
 
-ENV container=oci
+ENV DESCRIPTION="ACE receptor: the execution mesh node" \
+    container=oci
+
+LABEL name="ace-receptor" \
+      version="v${RECEPTOR_SRC_GIT_TAG}" \
+      summary="${DESCRIPTION}" \
+      description="${DESCRIPTION}" \
+      io.k8s.description="${DESCRIPTION}" \
+      io.k8s.display-name="ACE receptor" \
+      io.openshift.tags="ace,automation,receptor" \
+      maintainer="Jamie Sammons"
+
 USER 1000
 
 # dumb-init as PID 1: receptor spawns ansible-runner, which spawns

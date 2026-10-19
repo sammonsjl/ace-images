@@ -1,4 +1,4 @@
-# The Python packages in receptor-rhel9 (AAP 2.7-6), names and versions only.
+# Runtime Python packages, at the versions receptor-rhel9 (AAP 2.7) ships.
 ansible-runner==2.4.3
 dumb-init==1.2.5.post1
 lockfile==0.12.2

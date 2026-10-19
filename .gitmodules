@@ -1,0 +1,3 @@
+[submodule "receptor/src"]
+	path = receptor/src
+	url = https://github.com/ansible/receptor.git

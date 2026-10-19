@@ -1,0 +1,11 @@
+# The environment CI runs hack/prefetch.sh and hack/build.sh in. It exists
+# for one reason: the build needs `podman build --mount type=secret,env=...`
+# (buildah >= 1.44) to hand the prefetch env to every RUN step the way
+# Konflux does, and the podman in GitHub's Ubuntu runners, and in
+# quay.io/podman/stable, is older than that. Arch ships a current podman --
+# the same one the laptop these scripts were written on runs.
+FROM docker.io/library/archlinux:latest
+RUN pacman -Syu --noconfirm podman fuse-overlayfs git python skopeo && \
+    pacman -Scc --noconfirm && \
+    printf '[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' > /etc/containers/storage.conf
+WORKDIR /repo
