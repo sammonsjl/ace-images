@@ -42,7 +42,9 @@ cleanup() {
 trap cleanup EXIT
 if [ -s "$prefetched/inject.patches" ]; then
   while read -r sub patch; do
-    git -C "$sub" apply "$prefetched/$patch"
+    # Already applied (a build that never got to clean up) is fine.
+    git -C "$sub" apply --reverse --check "$prefetched/$patch" 2>/dev/null \
+      || git -C "$sub" apply "$prefetched/$patch"
     patched+=("$sub")
   done < "$prefetched/inject.patches"
 fi
