@@ -20,7 +20,7 @@ RUN dnf install -y --nodocs python3.12 python3.12-devel gcc gcc-c++ make pkgconf
       libpq-devel krb5-devel libffi-devel openssl-devel libxml2-devel libxslt-devel \
       xmlsec1-devel xmlsec1-openssl-devel libtool-ltdl-devel openldap-devel rust cargo && \
     dnf clean all
-COPY requirements.txt /tmp/requirements.txt
+COPY requirements.txt build-constraints.txt /tmp/
 COPY src/ /src/awx/
 COPY django-ansible-base/ /src/django-ansible-base/
 COPY awx-plugins/ /src/awx-plugins/
@@ -31,7 +31,8 @@ COPY system-certifi/ /src/system-certifi/
 # (MANIFEST.in excludes it from the sdist), and while it is importable AWX
 # runs in development mode, where its task manager never schedules a job.
 RUN python3.12 -m venv /var/lib/awx/venv/awx && \
-    /var/lib/awx/venv/awx/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+    PIP_CONSTRAINT=/tmp/build-constraints.txt \
+      /var/lib/awx/venv/awx/bin/pip install --no-cache-dir -r /tmp/requirements.txt
 RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
     SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AWX_PLUGINS_INTERFACES=0.0.1a6 \
     SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AWX_PLUGINS_CORE=0.1.dev0 \

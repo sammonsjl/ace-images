@@ -9,3 +9,7 @@ setuptools-scm>=8,<10
 # sdists build CMake and Ninja themselves.
 cmake>=3.15
 ninja
+# django-guid builds with poetry; poetry 2 turns its "^4.0 | ^5.0" Django
+# range into metadata pip cannot parse, so its builds get poetry 1
+# (build-constraints.txt).
+poetry<2
