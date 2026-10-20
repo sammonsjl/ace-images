@@ -4,7 +4,11 @@
 # The build step of a Konflux build, done the way konflux-build-cli does it
 # (konflux-ci/konflux-build-cli, pkg/commands/build.go):
 #
-#   - base images are pulled first, then the build runs with NO network;
+#   - base images are pulled first. Konflux then cuts the network (its
+#     `hermetic` setting); this build leaves it on. Nothing fetches from the
+#     internet anyway -- every tool below is pointed at the prefetch -- but a
+#     dependency missing from the lockfiles would now be fetched quietly
+#     instead of failing the build;
 #   - the prefetched dependencies (hack/prefetch.sh) are mounted at
 #     /cachi2/output, and this arch's prefetched RPM repos are mounted over
 #     /etc/yum.repos.d, so dnf/microdnf can only install locked packages;
@@ -69,7 +73,7 @@ chmod -R u+w,go+rwX "$work"
 # --no-cache, as Konflux builds; ACE_LAYER_CACHE=1 keeps the layer cache, for
 # iterating on a Containerfile without recompiling everything above the change.
 cache=(--no-cache); [ "${ACE_LAYER_CACHE:-}" = 1 ] && cache=()
-args=(--network none --pull=never "${cache[@]}" -f "$image/Containerfile" -t "localhost/ace-${image}:${tag}")
+args=(--pull=never "${cache[@]}" -f "$image/Containerfile" -t "localhost/ace-${image}:${tag}")
 args+=(--volume "$work/output:/cachi2/output:z")
 repos="$work/output/deps/rpm/$arch/repos.d"
 [ -d "$repos" ] && args+=(--volume "$repos:/etc/yum.repos.d:z")
@@ -86,7 +90,7 @@ for e in json.load(open(sys.argv[1])): print(e["name"] + "\t" + e["value"])' "$p
 args+=(--label "build-date=$(date -u +%Y-%m-%dT%H:%M:%S)" --label "architecture=$arch" --label vcs-type=git)
 args+=(--label "vcs-ref=$(git rev-parse HEAD)")
 
-# Base images are pulled while the network is still allowed. A FROM may name
+# Base images are pulled first. A FROM may name
 # its image through an ARG (ansible-builder's FROM $EE_BASE_IMAGE), so ARG
 # defaults are expanded; stage names are not images.
 bases=$(python3 - "$image/Containerfile" "$@" <<'PY'

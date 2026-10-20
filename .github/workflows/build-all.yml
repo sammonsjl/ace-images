@@ -1,7 +1,7 @@
 # Rebuild every image, from the pinned sources and lockfiles, under one tag.
-# Manual only. Each image is built hermetically (hack/prefetch.sh, then
-# hack/build.sh with no network), the way Konflux builds Red Hat's images, so
-# a run is reproducible: the same commit of this repo gives the same inputs.
+# Manual only. Each image is prefetched (hack/prefetch.sh) and built from the
+# prefetch (hack/build.sh), the way Konflux builds Red Hat's images, so a run
+# is reproducible: the same commit of this repo gives the same inputs.
 #
 # Fresh upstream code is not fetched here any more. To move an image forward,
 # bump its submodule (and/or its *.in files), run hack/lock.sh <image>, and

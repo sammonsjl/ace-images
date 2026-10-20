@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run by hack/lock.sh after pip-compile, from hub/. pulpcore asks for
 # psycopg[binary], so pip-compile pins psycopg-binary -- which exists only as
-# wheels, with no sdist a hermetic build could compile. The vendor image runs
+# wheels, with no sdist a build from the prefetch could compile. The vendor image runs
 # plain psycopg on the system libpq instead, so the pin is cut here, and the
 # wheels stage builds with --no-deps (every package is pinned anyway).
 set -eu

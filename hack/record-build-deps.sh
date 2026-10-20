@@ -4,13 +4,13 @@
 # Finds the build requirements pybuild-deps misses, by doing the build once
 # with the network on and writing down what pip actually fetched. Every
 # sdist the prefetch holds is built from source, in isolation, the way the
-# hermetic build will; each build environment pip creates logs
+# build from the prefetch will; each build environment pip creates logs
 # "Successfully installed ...". Anything installed there that the prefetch
 # does not already hold is printed as a pin, for
 # <image>/requirements-build-extra.in.
 #
 # Slow (it compiles everything, Rust included) and only needed when a
-# hermetic build stops at "No matching distribution found".
+# build from the prefetch stops at "No matching distribution found".
 set -euo pipefail
 
 image=${1:?usage: hack/record-build-deps.sh <image>}

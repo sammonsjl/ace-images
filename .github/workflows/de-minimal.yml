@@ -1,6 +1,6 @@
 name: build-de-minimal
 
-# Hermetic where de-minimal/hermeto.json exists: the upstream source is pinned by
+# Prefetched where de-minimal/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in de-minimal/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh de-minimal, and push.
 on:

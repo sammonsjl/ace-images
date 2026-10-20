@@ -1,5 +1,5 @@
 # ACE controller: AWX (src/, at the public commit nearest the vendor's 4.8.6)
-# built the way controller-rhel9 (AAP 2.7) is built. Hermetic:
+# built the way controller-rhel9 (AAP 2.7) is built. Prefetched:
 # hack/prefetch.sh controller, then hack/build.sh controller.
 #
 #   venv    /var/lib/awx/venv/awx, built in full from sdists the way AWX's own

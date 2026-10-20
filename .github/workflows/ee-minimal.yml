@@ -1,6 +1,6 @@
 name: build-ee-minimal
 
-# Hermetic where ee-minimal/hermeto.json exists: the upstream source is pinned by
+# Prefetched where ee-minimal/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in ee-minimal/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh ee-minimal, and push.
 on:

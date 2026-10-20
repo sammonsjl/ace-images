@@ -1,7 +1,7 @@
 # The ACE minimal execution environment, defined the way Red Hat defines
 # ee-minimal-rhel9: an ansible-builder v3 file. `hack/ee-create.sh ee-minimal`
 # turns it into the build context (Containerfile + _build/), committed so the
-# Containerfile can be read and diffed, and built hermetically like every
+# Containerfile can be read and diffed, and built from a prefetch like every
 # other image (hack/prefetch.sh, hack/build.sh).
 version: 3
 
@@ -35,7 +35,7 @@ options:
     cmd: '["ansible-runner", "run", "/runner"]'
 
 additional_build_steps:
-  # Hermetic builds have only sdists, so even the base stage's install of
+  # The prefetch holds sdists where PyPI has no wheel, so the base stage's install of
   # ansible-core and ansible-runner compiles C. The base stage never reaches
   # the final image (see hack/ee-create.sh), so its compilers don't either.
   prepend_base:

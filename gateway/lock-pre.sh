@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run by hack/lock.sh, in the toolbox image, from gateway/. jewel already
 # ships the pinned requirements file it is built from downstream (generated
-# for exactly this kind of hermetic build), so it is taken as it stands.
+# for exactly this kind of prefetched build), so it is taken as it stands.
 # Added: the C build of psycopg the vendor installs (psycopg[c]), and the
 # three packages that go into the system interpreter rather than the venv.
 # django-ansible-base is built from its own submodule.

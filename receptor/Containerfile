@@ -1,6 +1,6 @@
 # ACE receptor: the execution mesh node, built from upstream source the way
 # receptor-rhel9 (AAP 2.7) is built. Konflux-style: hack/prefetch.sh fetches
-# every dependency, hack/build.sh builds with no network.
+# every dependency, hack/build.sh builds from it.
 #
 #   go      receptor from src/ (submodule at v1.6.7), CGO on
 #   wheels  every Python package from its sdist

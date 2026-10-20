@@ -6,14 +6,14 @@
 # on different architectures.
 #
 # Two build paths, chosen per image:
-#   hermetic  the image has a hermeto.json. Built the way Konflux builds Red
+#   prefetched  the image has a hermeto.json. Built the way Konflux builds Red
 #             Hat's images: hack/prefetch.sh fetches every dependency, then
-#             hack/build.sh builds with no network. Both run inside the
+#             hack/build.sh builds from the prefetch. Both run inside the
 #             hack/ci image, because they need a newer podman than the
 #             runner has (see hack/ci/Containerfile).
 #   legacy    no hermeto.json yet: the original buildx build, which clones
 #             upstream and installs from the internet. Images move to the
-#             hermetic path one at a time.
+#             prefetched path one at a time.
 
 name: build-image
 
@@ -65,9 +65,9 @@ jobs:
         id: mode
         run: |
           if [ -f "${{ inputs.image }}/hermeto.json" ]; then
-            echo "hermetic=true" >> "$GITHUB_OUTPUT"
+            echo "prefetched=true" >> "$GITHUB_OUTPUT"
           else
-            echo "hermetic=false" >> "$GITHUB_OUTPUT"
+            echo "prefetched=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Skip platforms the caller did not ask for
@@ -90,7 +90,7 @@ jobs:
       # any published tag answers "what is in this?". That is the override when
       # the caller passed one (build-all always does), else the Containerfile's pin.
       - name: Resolve the upstream ref that was built
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'false'
         id: src
         env:
           BUILD_ARGS: ${{ inputs.build_args }}
@@ -105,17 +105,17 @@ jobs:
           echo "sha=${sha:-unpinned}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'false'
 
       - uses: docker/login-action@v3
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'false'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push by digest
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'false'
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -135,21 +135,21 @@ jobs:
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'false'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'false'
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
-      # ---- hermetic path ----------------------------------------------------
+      # ---- prefetched path --------------------------------------------------
       - name: Check out the image's upstream sources (its submodules)
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'true'
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'true'
         run: |
           paths=$(git config --file .gitmodules --get-regexp '^submodule\.${{ inputs.image }}/.*\.path$' | awk '{print $2}')
           [ -z "$paths" ] || git submodule update --init -- $paths
 
-      - name: Prefetch, build with no network, push by digest
-        if: steps.want.outputs.build == 'true' && steps.mode.outputs.hermetic == 'true'
+      - name: Prefetch, build, push by digest
+        if: steps.want.outputs.build == 'true' && steps.mode.outputs.prefetched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILD_ARGS: ${{ inputs.build_args }}

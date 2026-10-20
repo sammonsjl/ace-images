@@ -1,6 +1,6 @@
 # ACE gateway: jewel (src/, at the public commit nearest the vendor's
 # 2.7.20260824) plus the platform console from ansible-ui, built the way
-# gateway-rhel9 (AAP 2.7) is built. Hermetic: hack/prefetch.sh gateway, then
+# gateway-rhel9 (AAP 2.7) is built. Prefetched: hack/prefetch.sh gateway, then
 # hack/build.sh gateway.
 #
 #   wheels  every Python package from its sdist, plus django-ansible-base,

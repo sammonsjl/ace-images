@@ -2,7 +2,7 @@
 # collection and the Python its event sources import (Kafka, AWS, Azure, ...).
 # Built FROM ace-de-minimal, as de-supported-rhel9 is built from Red Hat's
 # de-minimal. Generated into a build context by hack/ee-create.sh
-# de-supported; built hermetically like every other image. The collection
+# de-supported; built from a prefetch like every other image. The collection
 # itself is prefetched as a generic artifact (artifacts.lock.yaml).
 version: 3
 

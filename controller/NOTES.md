@@ -70,7 +70,7 @@ Cross-checked against `controller-rhel9` (automation-controller 4.8.6):
 ## Realigned to the vendor's final stage, 2026-10-19/20
 
 The final stage follows `controller-rhel9`'s step for step (`hack/diff-history.py`), from a venv
-built hermetically in a builder stage. Deliberate differences:
+built from the prefetch in a builder stage. Deliberate differences:
 
 - **No `/var/lib/awx/.tower_version`.** Its existence makes AWX report itself as Red Hat Ansible
   Automation Platform (`X-API-Product-Name`) and use Red Hat's subscription licensing instead of

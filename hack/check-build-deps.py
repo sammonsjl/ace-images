@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """hack/check-build-deps.py <prefetched-pip-dir>
 
-Before a hermetic build finds it the slow way: reads the [build-system]
+Before a build from the prefetch finds it the slow way: reads the [build-system]
 requires of every sdist Hermeto prefetched, and lists the ones no prefetched
 file can satisfy. Each line printed belongs in the image's
 requirements-build-extra.in. (pybuild-deps misses some -- conditional

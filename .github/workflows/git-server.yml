@@ -1,6 +1,6 @@
 name: build-git-server
 
-# Hermetic where git-server/hermeto.json exists: the upstream source is pinned by
+# Prefetched where git-server/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in git-server/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh git-server, and push.
 on:

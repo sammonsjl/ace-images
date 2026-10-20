@@ -1,6 +1,6 @@
 name: build-de-supported
 
-# Hermetic where de-supported/hermeto.json exists: the upstream source is pinned by
+# Prefetched where de-supported/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in de-supported/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh de-supported, and push.
 on:

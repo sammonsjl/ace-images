@@ -1,5 +1,5 @@
 # ACE EDA: eda-server (src/, at the public commit nearest the vendor's 1.3.8)
-# built the way eda-controller-rhel9 (AAP 2.7) is built. Hermetic:
+# built the way eda-controller-rhel9 (AAP 2.7) is built. Prefetched:
 # hack/prefetch.sh eda, then hack/build.sh eda.
 #
 #   wheels  every Python package from its sdist, plus django-ansible-base,

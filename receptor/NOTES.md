@@ -44,7 +44,7 @@ What it took:
   vendor image. The runtime installs them with `--no-index --prefix /usr`.
 - **Versions:** `requirements.in` pins the vendor's `pip freeze`.
 
-## Built hermetically, the Konflux way (2026-10-19)
+## Built from a prefetch, the Konflux way (2026-10-19)
 
 The receptor source is the `src/` submodule, pinned to tag `v1.6.7`. No
 `git clone` happens during the build. Every dependency is prefetched by Hermeto
@@ -57,7 +57,8 @@ The receptor source is the `src/` submodule, pinned to tag `v1.6.7`. No
 - every RPM in `rpms.lock.yaml`, resolved against the UBI 9 repos for x86_64
   and aarch64.
 
-`hack/build.sh receptor` then builds with `--network none`. The prefetched
+`hack/build.sh receptor` then builds from that prefetch (since 2026-10-20 with
+the network on, where Konflux cuts it; README). The prefetched
 tree is mounted at `/cachi2/output`, the prefetched RPM repos replace
 `/etc/yum.repos.d`, and the prefetch env reaches every RUN step as secret env
 mounts. The Containerfile therefore has no prefetch plumbing in it, just as

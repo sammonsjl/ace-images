@@ -3,7 +3,7 @@
 # engine it drives through a JVM). Red Hat ships the same split:
 # de-supported-rhel9 is built FROM a de-minimal-rhel9, and so is
 # ace-de-supported FROM this. Generated into a build context by
-# hack/ee-create.sh de-minimal; built hermetically like every other image.
+# hack/ee-create.sh de-minimal; built from a prefetch like every other image.
 version: 3
 
 images:
@@ -40,7 +40,7 @@ additional_build_steps:
     - ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
   prepend_final:
     - ARG PIP_OPTS=--no-deps
-  # Hermetic builds have only sdists, so the base stage's own install of
+  # The prefetch holds sdists where PyPI has no wheel, so the base stage's install of
   # ansible-core and ansible-runner compiles C; the base stage never reaches
   # the final image (hack/ee-create.sh).
   prepend_base:

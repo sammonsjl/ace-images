@@ -1,6 +1,6 @@
 name: build-gateway
 
-# Hermetic where gateway/hermeto.json exists: the upstream source is pinned by
+# Prefetched where gateway/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in gateway/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh gateway, and push.
 on:

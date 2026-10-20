@@ -1,7 +1,7 @@
 # ace-images
 
 The container images of an AAP-style automation platform, built **from
-upstream source, the way Red Hat builds its AAP images**: hermetically, in the
+upstream source, the way Red Hat builds its AAP images**: from a prefetch, in the
 manner of Konflux. Each Containerfile's final stage follows, step by step, the
 final stage recorded in the history of the Red Hat image it stands in for.
 
@@ -26,7 +26,7 @@ Red Hat builds each AAP image in Konflux, in three moves. So does this repo.
    `hermeto.json`) — the tools it takes to build those, Go modules, npm
    packages, and the exact RPMs, every file checked against the hash in its
    lockfile.
-2. **Build, with no network** — `hack/build.sh <image>`. `podman build --network none`,
+2. **Build** — `hack/build.sh <image>`. `podman build`,
    with the prefetched tree mounted at `/cachi2/output`, its RPM repos mounted
    over `/etc/yum.repos.d`, and its environment (`PIP_NO_INDEX`,
    `PIP_FIND_LINKS`, `GOMODCACHE`, `CARGO_HOME`, ...) handed to every `RUN` step
@@ -36,10 +36,13 @@ Red Hat builds each AAP image in Konflux, in three moves. So does this repo.
    installs their output with `pip install --no-index`.
    **Where this differs from Red Hat:** Konflux prefetches sdists only and
    compiles every wheel itself. ace-images takes PyPI's wheels instead,
-   because compiling a few hundred packages per image takes hours. The build
-   is still offline and reproducible, and the lockfiles are still an exact,
-   hashed list of what went in; what is lost is only "we compiled it
-   ourselves". Compiled here anyway: packages PyPI has no wheel for (uwsgi,
+   because compiling a few hundred packages per image takes hours. And
+   Konflux builds Red Hat's images *hermetically*, with the network cut off;
+   ace-images builds with it on. Every tool is still pointed at the
+   prefetch, so the lockfiles are still an exact, hashed list of what went in
+   and the build is reproducible; what is lost is the proof — a dependency
+   missing from the lockfiles would be fetched instead of failing the build —
+   and "we compiled it ourselves". Compiled here anyway: packages PyPI has no wheel for (uwsgi,
    psycopg's C extension, and a few more), lxml and xmlsec in the gateway
    (their wheels each bundle a different libxml2, and xmlsec will not load
    beside a mismatched lxml), and PyYAML in receptor (the vendor's has no C

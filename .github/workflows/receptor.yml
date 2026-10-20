@@ -1,6 +1,6 @@
 name: build-receptor
 
-# Hermetic: receptor/src is a submodule pinned to the release tag, and the
+# Prefetched: receptor/src is a submodule pinned to the release tag, and the
 # lockfiles in receptor/ decide every dependency. To move to a new release,
 # bump the submodule, run hack/lock.sh receptor, and push.
 on:

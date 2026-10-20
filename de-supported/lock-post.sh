@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run by hack/lock.sh after pip-compile. ansible-rulebook (and ansible.eda)
 # ask for psycopg[binary], so pip-compile pins psycopg-binary -- wheels only,
-# no sdist a hermetic build could compile. Red Hat's decision environments
+# no sdist a build from the prefetch could compile. Red Hat's decision environments
 # carry psycopg-c instead, and so do these: the pin is cut, and
 # requirements-full.in, the complete pinned list without it, is what
 # execution-environment.yml hands ansible-builder, which installs it with

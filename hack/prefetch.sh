@@ -5,8 +5,8 @@
 # <image>/hermeto.json (Konflux's `prefetch-input`) and downloads every
 # dependency the build will need -- Python wheels (and sdists) and build backends, Go
 # modules, RPMs -- into $ACE_OUT/<image> (default ~/.cache/ace-images).
-# hack/build.sh then builds with no network, so anything not fetched here
-# makes the build fail. The HTTP timeouts are raised because PyPI's index
+# hack/build.sh then builds from what is fetched here: pip, npm, Go and dnf
+# are all pointed at it. The HTTP timeouts are raised because PyPI's index
 # pages for the biggest projects can take longer than Hermeto's default to
 # answer from a CI runner.
 #

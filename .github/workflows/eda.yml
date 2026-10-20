@@ -1,6 +1,6 @@
 name: build-eda
 
-# Hermetic where eda/hermeto.json exists: the upstream source is pinned by
+# Prefetched where eda/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in eda/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh eda, and push.
 on:

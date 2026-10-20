@@ -1,6 +1,6 @@
 name: build-controller
 
-# Hermetic where controller/hermeto.json exists: the upstream source is pinned by
+# Prefetched where controller/hermeto.json exists: the upstream source is pinned by
 # submodule and every dependency by the lockfiles in controller/. To refresh, bump
 # the submodule and/or the *.in files, run hack/lock.sh controller, and push.
 on:

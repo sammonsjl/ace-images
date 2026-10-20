@@ -1,5 +1,5 @@
 # The UBI 9 repositories, as the ubi9 images ship them. rpm-lockfile-prototype
-# resolves every image's rpms.in.yaml against these, so a hermetic build only
+# resolves every image's rpms.in.yaml against these, so a build from the prefetch only
 # ever installs packages UBI can redistribute. (Red Hat's own builds resolve
 # against the entitled RHEL 9 repos; UBI is the public subset of those.)
 

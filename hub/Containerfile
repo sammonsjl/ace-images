@@ -1,5 +1,5 @@
 # ACE hub: galaxy_ng (src/, at the public commit nearest the vendor's 4.12.5)
-# on pulpcore, built the way hub-rhel9 (AAP 2.7) is built. Hermetic:
+# on pulpcore, built the way hub-rhel9 (AAP 2.7) is built. Prefetched:
 # hack/prefetch.sh hub, then hack/build.sh hub.
 #
 #   wheels  every Python package from its sdist, plus galaxy_ng,
