@@ -70,7 +70,7 @@ def shape(line):
         dest = rest.rsplit(" in ", 1)[-1].strip() if " in " in rest else rest.split()[-1]
         if dest.startswith(SKIP_DEST):
             return None
-        return f"COPY -> {dest}"
+        return f"COPY -> {dest.rstrip('/') or '/'}"
     if instr == "LABEL":
         if re.search(r'"?(build-date|org\.opencontainers\.image\.created|vcs-ref)"?=', rest):
             return None  # added by the build system, not the Containerfile

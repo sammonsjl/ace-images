@@ -111,14 +111,16 @@ RUN for dir in /etc/nginx /opt/aap_gateway /opt/aap_gateway/src /var/log/supervi
 
 ENV DESCRIPTION="ACE gateway: the platform gateway and console"
 ARG AAP_GATEWAY_GIT_TAG=2.7.20260824
-LABEL name="ace-gateway" \
-      version="${AAP_GATEWAY_GIT_TAG}" \
-      summary="${DESCRIPTION}" \
-      description="${DESCRIPTION}" \
-      io.k8s.description="${DESCRIPTION}" \
-      io.k8s.display-name="ACE gateway" \
-      io.openshift.tags="ace,automation,gateway" \
-      maintainer="Jamie Sammons"
+# One LABEL per line, as the vendor's Containerfile writes them.
+LABEL name="ace-gateway"
+LABEL version="${AAP_GATEWAY_GIT_TAG}"
+LABEL vendor="ACE"
+LABEL summary="${DESCRIPTION}"
+LABEL description="${DESCRIPTION}"
+LABEL io.k8s.description="${DESCRIPTION}"
+LABEL io.k8s.display-name="ACE gateway"
+LABEL io.openshift.tags="ace,automation,gateway"
+LABEL maintainer="Jamie Sammons"
 ENV container=oci
 USER root
 ENV LANG=en_US.UTF-8
