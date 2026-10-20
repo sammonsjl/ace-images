@@ -30,10 +30,13 @@ RUN python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requireme
 # No .git in the submodules, so the versions are given: setuptools-scm is told
 # django-ansible-base's, and jewel reads its own from a VERSION file at the top
 # of its tree (aap_gateway_api/version.py), which a release writes. Both are
-# the releases the vendor image carries.
+# the releases the vendor image carries. jewel's package metadata names
+# django-ansible-base by git URL (requirements_git.txt); a release names the
+# package, so that is what goes in, and pip finds the wheel built just above.
 RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
       python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/django-ansible-base && \
     echo 2.7.20260824 > /src/jewel/VERSION && \
+    sed -i 's| @ git+[^ ;]*||' /src/jewel/requirements/requirements_git.txt && \
       python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/jewel && \
     python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels /src/system-certifi
 
