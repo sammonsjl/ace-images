@@ -1,7 +1,28 @@
 [
-  {"type": "pip", "path": "de-supported",
-   "requirements_files": ["requirements.txt", "requirements-builder.txt"],
-   "requirements_build_files": ["requirements-build.txt", "requirements-build-extra.txt"]},
-  {"type": "rpm", "path": "de-supported"},
-  {"type": "generic", "path": "de-supported"}
+  {
+    "type": "pip",
+    "path": "de-supported",
+    "requirements_files": [
+      "requirements.txt",
+      "requirements-builder.txt"
+    ],
+    "requirements_build_files": [
+      "requirements-build.txt",
+      "requirements-build-extra.txt"
+    ],
+    "binary": {
+      "packages": ":all:",
+      "arch": "x86_64,aarch64",
+      "os": "linux",
+      "py_version": 312
+    }
+  },
+  {
+    "type": "rpm",
+    "path": "de-supported"
+  },
+  {
+    "type": "generic",
+    "path": "de-supported"
+  }
 ]

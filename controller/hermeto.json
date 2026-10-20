@@ -10,7 +10,7 @@
       "requirements-build-extra.txt"
     ],
     "binary": {
-      "packages": "uv-build,cmake,ninja",
+      "packages": ":all:",
       "arch": "x86_64,aarch64",
       "os": "linux",
       "py_version": 312

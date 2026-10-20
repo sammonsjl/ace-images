@@ -3,7 +3,7 @@
 #
 # The prefetch-dependencies step of a Konflux build: Hermeto reads
 # <image>/hermeto.json (Konflux's `prefetch-input`) and downloads every
-# dependency the build will need -- Python sdists and build backends, Go
+# dependency the build will need -- Python wheels (and sdists) and build backends, Go
 # modules, RPMs -- into $ACE_OUT/<image> (default ~/.cache/ace-images).
 # hack/build.sh then builds with no network, so anything not fetched here
 # makes the build fail.

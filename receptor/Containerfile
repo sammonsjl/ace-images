@@ -31,8 +31,10 @@ RUN CGO_ENABLED=1 go build -o receptor \
 FROM registry.access.redhat.com/ubi9/ubi:9.8 AS wheels
 RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc && dnf clean all
 COPY requirements.txt requirements-build.txt /tmp/
+# PyPI's wheels where there are any (hermeto.json), except PyYAML: built here,
+# without libyaml-devel, it has no C loader, as the vendor's has none.
 RUN python3.12 -m pip install --no-cache-dir -r /tmp/requirements-build.txt && \
-    python3.12 -m pip wheel --no-cache-dir --no-build-isolation \
+    PIP_NO_BINARY=pyyaml python3.12 -m pip wheel --no-cache-dir --no-build-isolation \
       --wheel-dir /wheels -r /tmp/requirements.txt
 
 ###############################################################################

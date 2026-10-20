@@ -36,11 +36,12 @@ What it took:
   a tree without `.git`, so it carries no VCS stamp. The Makefile's target is
   not used, because it forces `CGO_ENABLED=0`, and with CGO off RHEL's Go
   switches to its native FIPS module instead.
-- **Wheels:** every wheel is built from its sdist, without build isolation,
-  against the build backends in `requirements-build.txt` (setuptools 82.0.1,
-  flit_core 3.12.0: what the vendor's `WHEEL` files name). The runtime
-  installs them with `--no-index --prefix /usr`. libyaml-devel is left out on
-  purpose, so PyYAML has no C loader, as in the vendor image.
+- **Wheels:** the vendor builds every wheel from its sdist, without build
+  isolation, against setuptools 82.0.1 and flit_core 3.12.0 (what its `WHEEL`
+  files name). Since 2026-10-20 ace-images takes PyPI's wheels instead, for
+  speed (README), so those generator names no longer match; PyYAML is still
+  built from source, without libyaml-devel, so it has no C loader, as in the
+  vendor image. The runtime installs them with `--no-index --prefix /usr`.
 - **Versions:** `requirements.in` pins the vendor's `pip freeze`.
 
 ## Built hermetically, the Konflux way (2026-10-19)
@@ -50,7 +51,7 @@ The receptor source is the `src/` submodule, pinned to tag `v1.6.7`. No
 (`hack/prefetch.sh receptor`, driven by `hermeto.json`):
 
 - Go modules for `src/`;
-- Python **sdists only**: `requirements.txt`, plus the build backends in
+- Python **wheels where PyPI has them** (sdists alongside): `requirements.txt`, plus the build backends in
   `requirements-build.txt`, plus what it takes to build those backends from
   source (`requirements-bootstrap.txt`);
 - every RPM in `rpms.lock.yaml`, resolved against the UBI 9 repos for x86_64

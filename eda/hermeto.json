@@ -1,6 +1,23 @@
 [
-  {"type": "pip", "path": "eda",
-   "requirements_files": ["requirements.txt"],
-   "requirements_build_files": ["requirements-build.txt", "requirements-build-extra.txt"]},
-  {"type": "rpm", "path": "eda"}
+  {
+    "type": "pip",
+    "path": "eda",
+    "requirements_files": [
+      "requirements.txt"
+    ],
+    "requirements_build_files": [
+      "requirements-build.txt",
+      "requirements-build-extra.txt"
+    ],
+    "binary": {
+      "packages": ":all:",
+      "arch": "x86_64,aarch64",
+      "os": "linux",
+      "py_version": 312
+    }
+  },
+  {
+    "type": "rpm",
+    "path": "eda"
+  }
 ]

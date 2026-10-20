@@ -26,7 +26,12 @@ COPY requirements.txt /tmp/requirements.txt
 COPY django-ansible-base/ /src/django-ansible-base/
 COPY src/ /src/jewel/
 COPY system-certifi/ /src/system-certifi/
-RUN python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt
+# Everything arrives as a wheel where PyPI has one (hermeto.json), except
+# lxml and xmlsec: each wheel carries its own copy of libxml2, the two copies
+# differ, and xmlsec refuses to load beside an lxml built on another. Built
+# here, both link UBI's one libxml2.
+RUN PIP_NO_BINARY=lxml,xmlsec \
+      python3.12 -m pip wheel --no-cache-dir --wheel-dir /wheels -r /tmp/requirements.txt
 # No .git in the submodules, so the versions are given: setuptools-scm is told
 # django-ansible-base's, and jewel reads its own from a VERSION file at the top
 # of its tree (aap_gateway_api/version.py), which a release writes. Both are
