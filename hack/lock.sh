@@ -16,6 +16,7 @@
 #   rpms.in.yaml           -> rpms.lock.yaml           every RPM, both arches
 #   lock-pre.sh            runs first, if the image has one
 #   lock-post.sh           runs after the pip locks, if the image has one
+#   hermeto.json           binary.packages: what comes as a wheel (hack/binary-filter.py)
 set -euo pipefail
 
 image=${1:?usage: hack/lock.sh <image>}
@@ -60,6 +61,11 @@ fi
 # ...and may trim what pip-compile pulled in.
 if [ -f "$image/lock-post.sh" ]; then
   run sh ./lock-post.sh
+fi
+# Which packages Hermeto fetches as PyPI wheels (all that have one for both
+# arches), and which as sdists the build compiles.
+if [ -f "$image/hermeto.json" ]; then
+  python3 hack/binary-filter.py "$image"
 fi
 if [ -f "$image/rpms.in.yaml" ]; then
   run rpm-lockfile-prototype --outfile rpms.lock.yaml rpms.in.yaml

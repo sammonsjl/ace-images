@@ -1,0 +1,5 @@
+# Compiled in the image, against UBI's one libxml2: the two wheels on PyPI
+# each bundle a different libxml2, and xmlsec will not load beside a
+# mismatched lxml.
+lxml
+xmlsec

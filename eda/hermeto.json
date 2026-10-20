@@ -10,7 +10,7 @@
       "requirements-build-extra.txt"
     ],
     "binary": {
-      "packages": ":all:",
+      "packages": "adal,ansible-core,ansible-runner,asgiref,attrs,autobahn,automat,awx-plugins-core,awx-plugins-interfaces,azure-core,azure-identity,azure-keyvault,azure-keyvault-certificates,azure-keyvault-keys,azure-keyvault-secrets,boto3,botocore,cachetools,calver,certifi,cffi,changelog-chug,channels,charset-normalizer,coherent-licensed,constantly,cryptography,cython,daphne,deprecated,dispatcherd,distro,django,django-crum,django-filter,django-flags,djangorestframework,docutils,drf-spectacular,dumb-init,dynaconf,ecdsa,flit-core,google-auth,gunicorn,hatch-fancy-pypi-readme,hatch-vcs,hatchling,hyperlink,id,idna,incremental,inflection,insights-analytics-collector,isodate,jaraco-classes,jaraco-context,jaraco-functools,jeepney,jinja2,jmespath,jsonschema,keyring,kubernetes,lockfile,markdown-it-py,markupsafe,maturin,mdurl,more-itertools,msal,msal-extensions,msrest,msrestazure,nh3,oauthlib,packaging,pathspec,pbr,pexpect,pluggy,podman,poetry-core,psycopg,ptyprocess,pyasn1,pyasn1-modules,pycparser,pydantic,pygithub,pygments,pyjwt,pynacl,pyopenssl,pyrsistent,pytest-runner,python-daemon,python-dateutil,python-dsv-sdk,python-gnupg,python-tss-sdk,pyyaml,readme-renderer,requests,requests-oauthlib,requests-toolbelt,resolvelib,rfc3986,rich,rsa,s3transfer,secretstorage,semantic-version,semver,service-identity,setuptools,setuptools-rust,setuptools-scm,setuptools-twine,six,sqlparse,tomlkit,trove-classifiers,twine,twisted,txaio,typing-extensions,uritemplate,urllib3,validators,vcs-versioning,versioneer,websocket-client,wheel,wrapt,xxhash",
       "arch": "x86_64,aarch64",
       "os": "linux",
       "py_version": 312

@@ -21,9 +21,11 @@ Red Hat builds each AAP image in Konflux, in three moves. So does this repo.
 1. **Prefetch** — `hack/prefetch.sh <image>`. [Hermeto](https://github.com/hermetoproject/hermeto)
    reads `<image>/hermeto.json` and downloads every dependency up front: Python
    packages as **PyPI's wheels** for linux x86_64 and aarch64, CPython 3.12
-   (with each package's sdist alongside, for the few with no wheel), the tools
-   it takes to build those, Go modules, npm packages, and the exact RPMs —
-   every file checked against the hash in its lockfile.
+   — every package that has one; the few that do not come as sdists, which
+   the build compiles (`hack/binary-filter.py` writes the list into
+   `hermeto.json`) — the tools it takes to build those, Go modules, npm
+   packages, and the exact RPMs, every file checked against the hash in its
+   lockfile.
 2. **Build, with no network** — `hack/build.sh <image>`. `podman build --network none`,
    with the prefetched tree mounted at `/cachi2/output`, its RPM repos mounted
    over `/etc/yum.repos.d`, and its environment (`PIP_NO_INDEX`,

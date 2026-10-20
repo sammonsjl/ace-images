@@ -14,7 +14,7 @@
       "requirements-bootstrap.txt"
     ],
     "binary": {
-      "packages": ":all:",
+      "packages": "ansible-runner,changelog-chug,cython,docutils,dumb-init,flit-core,lockfile,packaging,pbr,pexpect,ptyprocess,python-daemon,semver,setuptools,setuptools-scm,vcs-versioning,wheel",
       "arch": "x86_64,aarch64",
       "os": "linux",
       "py_version": 312

@@ -11,7 +11,7 @@
       "requirements-build-extra.txt"
     ],
     "binary": {
-      "packages": ":all:",
+      "packages": "aiofiles,aiohappyeyeballs,aiohttp,aiosignal,ansible-core,ansible-rulebook,ansible-runner,anyio,attrs,bindep,calver,certifi,cffi,changelog-chug,cryptography,cython,distro,docutils,dpath,drools-jpy,dumb-init,expandvars,filelock,flit-core,frozenlist,h11,hatch-fancy-pypi-readme,hatch-vcs,hatchling,httpcore,httpx,idna,janus,jinja2,jpy,jsonschema,jsonschema-specifications,lockfile,markupsafe,maturin,multidict,packaging,parsley,pathspec,pbr,pexpect,pkgconfig,platformdirs,pluggy,poetry-core,propcache,psycopg,ptyprocess,puccinialin,pycparser,pyparsing,python-daemon,pyyaml,referencing,resolvelib,rpds-py,semantic-version,semver,setuptools,setuptools-rust,setuptools-scm,tomlkit,tqdm,trove-classifiers,typing-extensions,vcs-versioning,watchdog,websockets,wheel,xxhash,yarl",
       "arch": "x86_64,aarch64",
       "os": "linux",
       "py_version": 312
