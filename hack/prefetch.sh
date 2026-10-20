@@ -6,7 +6,9 @@
 # dependency the build will need -- Python wheels (and sdists) and build backends, Go
 # modules, RPMs -- into $ACE_OUT/<image> (default ~/.cache/ace-images).
 # hack/build.sh then builds with no network, so anything not fetched here
-# makes the build fail.
+# makes the build fail. The HTTP timeouts are raised because PyPI's index
+# pages for the biggest projects can take longer than Hermeto's default to
+# answer from a CI runner.
 #
 # The output lives outside the repo on purpose: Hermeto copies the whole
 # source tree before it starts, and the output would be copied with it.
@@ -31,6 +33,7 @@ run() {
   podman run --rm -v "$root:/repo:Z" -v "$out:/output:Z" -w /repo \
     -e GIT_CONFIG_COUNT=2 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
     -e GIT_CONFIG_KEY_1=url.https://github.com/.insteadOf -e GIT_CONFIG_VALUE_1=git@github.com: \
+    -e HERMETO_HTTP__CONNECT_TIMEOUT=120 -e HERMETO_HTTP__READ_TIMEOUT=600 \
     "$hermeto" "$@"
 }
 
