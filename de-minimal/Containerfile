@@ -41,6 +41,7 @@ ARG PKGMGR
 
 RUN $PYCMD -m pip install --no-cache-dir bindep pyyaml packaging
 ARG PIP_OPTS=--no-deps
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 COPY _build/requirements.txt requirements.txt
 COPY _build/bindep.txt bindep.txt
 RUN $PYCMD /output/scripts/introspect.py introspect --user-pip=requirements.txt --user-bindep=bindep.txt --write-bindep=/tmp/src/bindep.txt --write-pip=/tmp/src/requirements.txt

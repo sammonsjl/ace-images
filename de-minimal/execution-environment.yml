@@ -32,6 +32,9 @@ additional_build_steps:
   # An ARG, not an ENV, so it does not stay in the image.
   prepend_builder:
     - ARG PIP_OPTS=--no-deps
+    # jpy (under drools_jpy) builds against a JDK and finds it only through
+    # JAVA_HOME. The JDK itself comes from bindep.txt's compile profile.
+    - ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
   prepend_final:
     - ARG PIP_OPTS=--no-deps
   # Hermetic builds have only sdists, so the base stage's own install of
