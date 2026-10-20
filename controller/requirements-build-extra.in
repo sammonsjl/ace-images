@@ -13,3 +13,7 @@ ninja
 # range into metadata pip cannot parse, so its builds get poetry 1
 # (build-constraints.txt).
 poetry<2
+# AWX's own requirements pin maturin 1.9.6 (it builds in the venv), so that is
+# the only maturin pybuild-deps sees; packages that build with isolation ask
+# for a newer one.
+maturin>=1.14.1,<2
