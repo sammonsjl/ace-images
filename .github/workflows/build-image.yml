@@ -166,7 +166,12 @@ jobs:
           docker build -q -t ace-ci -f hack/ci/Containerfile hack/ci
           docker run --rm --privileged -v "$PWD:/repo" -e GH_TOKEN -e ACE_OUT=/var/tmp/ace-out ace-ci sh -euc '
             git config --global --add safe.directory "*"
-            hack/prefetch.sh "${{ inputs.image }}"
+            # PyPI times out now and then; a prefetch starts clean, so retry it.
+            for try in 1 2 3; do
+              hack/prefetch.sh "${{ inputs.image }}" && break
+              [ "$try" = 3 ] && exit 1
+              echo "prefetch failed, retrying"; sleep 30
+            done
             hack/build.sh "${{ inputs.image }}" ci -- '"$build_args"' \
               --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
               --label "org.opencontainers.image.revision=${{ github.sha }}" \
