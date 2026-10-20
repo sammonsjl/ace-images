@@ -80,7 +80,10 @@ COPY --from=venv /var/lib/awx/venv /var/lib/awx/venv
 RUN ln -s /var/lib/awx/venv/awx/bin/dumb-init /usr/bin/dumb-init && \
     ln -s /var/lib/awx/venv/awx/bin/supervisord /usr/bin/supervisord && \
     ln -s /var/lib/awx/venv/awx/bin/supervisorctl /usr/bin/supervisorctl
-RUN /var/lib/awx/venv/awx/bin/pip show awx | grep Version | cut -d " " -f 2 > /var/lib/awx/.tower_version
+# The vendor writes the version to /var/lib/awx/.tower_version here. That
+# file's existence is what makes AWX call itself Red Hat Ansible Automation
+# Platform and check for a Red Hat subscription instead of using its open
+# license, so an open build leaves it out.
 # What the venv needed only to build itself (AWX's
 # requirements_tower_uninstall list, and then some).
 RUN /var/lib/awx/venv/awx/bin/pip uninstall -y Cython hatchling maturin pathspec pluggy \

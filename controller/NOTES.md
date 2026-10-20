@@ -66,3 +66,17 @@ Cross-checked against `controller-rhel9` (automation-controller 4.8.6):
   venv deliberately NOT on PATH (awx-manage is reached through /usr/bin)
 - the vendor's installer overrides launch_awx_task.sh to drop
   `awx-manage provision_instance`, exactly as this build does
+
+## Realigned to the vendor's final stage, 2026-10-19/20
+
+The final stage follows `controller-rhel9`'s step for step (`hack/diff-history.py`), from a venv
+built hermetically in a builder stage. Deliberate differences:
+
+- **No `/var/lib/awx/.tower_version`.** Its existence makes AWX report itself as Red Hat Ansible
+  Automation Platform (`X-API-Product-Name`) and use Red Hat's subscription licensing instead of
+  the open license; without a subscription, the controller then has no valid license. Found in the
+  AWX the Hard Way build pass on 2026-10-20, where `license_info` came back `{}`.
+- No `candlepin-redhat-ca.crt`, no `redhat.indirect_accounting` collection, no `nginx.conf` in the
+  image: the first two are Red Hat's subscription plumbing, and the installer mounts its own
+  `nginx.conf`.
+- `c-ares` and `redis` are not installed: UBI carries neither.
