@@ -12,10 +12,12 @@ packages:
   - python3.12-pip
   - java-17-openjdk-headless
   - glibc-langpack-en
+  - libpq
   - gcc
   - gcc-c++
   - python3.12-devel
   - java-17-openjdk-devel
+  - libpq-devel
   - libffi-devel
   - openssl-devel
   - rust
