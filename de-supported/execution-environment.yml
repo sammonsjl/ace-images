@@ -30,6 +30,9 @@ dependencies:
     python:
       - psycopg-binary
       - systemd-python
+    # ...and systemd-python's headers, which its bindep.txt asks for.
+    system:
+      - systemd-devel
 
 options:
   package_manager_path: /usr/bin/microdnf

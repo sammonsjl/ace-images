@@ -66,7 +66,8 @@ COPY --from=galaxy /usr/share/ansible /usr/share/ansible
 COPY _build/requirements.txt requirements.txt
 COPY _build/exclude-requirements.txt exclude-requirements.txt
 COPY _build/bindep.txt bindep.txt
-RUN $PYCMD /output/scripts/introspect.py introspect --user-pip=requirements.txt --exclude-pip-reqs=exclude-requirements.txt --user-bindep=bindep.txt --write-bindep=/tmp/src/bindep.txt --write-pip=/tmp/src/requirements.txt
+COPY _build/exclude-bindep.txt exclude-bindep.txt
+RUN $PYCMD /output/scripts/introspect.py introspect --user-pip=requirements.txt --exclude-pip-reqs=exclude-requirements.txt --user-bindep=bindep.txt --exclude-bindep-reqs=exclude-bindep.txt --write-bindep=/tmp/src/bindep.txt --write-pip=/tmp/src/requirements.txt
 RUN /output/scripts/assemble
 
 # Final build stage
