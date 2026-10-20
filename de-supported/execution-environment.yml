@@ -11,6 +11,10 @@ images:
     name: ghcr.io/sammonsjl/ace-de-minimal:latest
 
 dependencies:
+  # ace-de-minimal's interpreter; the image's /usr/bin/python3 is not it.
+  python_interpreter:
+    package_system: python3.12
+    python_path: /usr/bin/python3.12
   ansible_core:
     package_pip: ansible-core
   ansible_runner:
