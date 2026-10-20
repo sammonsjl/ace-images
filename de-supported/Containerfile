@@ -83,6 +83,7 @@ ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
 ARG PIP_OPTS=--no-deps
+USER root
 
 COPY --from=galaxy /usr/share/ansible /usr/share/ansible
 
