@@ -29,6 +29,9 @@ dependencies:
 
 options:
   package_manager_path: /usr/bin/microdnf
+  # The final stage starts from the base image itself (hack/ee-create.sh), so
+  # the check ansible-builder would run there has no /output/scripts to run.
+  skip_ansible_check: true
   # dumb-init, the entrypoint and the command all come from ace-de-minimal.
   container_init:
     package_pip: ""

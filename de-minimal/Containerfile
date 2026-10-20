@@ -60,7 +60,6 @@ ARG ANSIBLE_INSTALL_REFS
 ARG PKGMGR
 
 ARG PIP_OPTS=--no-deps
-RUN /output/scripts/check_ansible $PYCMD
 COPY --from=builder /output/ /output/
 RUN /output/scripts/install-from-bindep && rm -rf /output/wheels
 RUN chmod ug+rw /etc/passwd
