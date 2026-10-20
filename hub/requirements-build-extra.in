@@ -10,3 +10,7 @@ cmake>=3.15
 ninja
 # ast-serialize (a build tool in pytokens' chain, via mypy) is Rust that needs
 # rustc 1.95, newer than UBI's 1.92, so it is taken as a wheel too.
+# django-guid builds with poetry; poetry 2 turns its "^4.0 | ^5.0" Django
+# range into metadata pip cannot parse, so its builds get poetry 1
+# (build-constraints.txt).
+poetry<2

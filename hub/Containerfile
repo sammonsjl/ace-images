@@ -16,14 +16,15 @@ RUN dnf install -y --nodocs python3.12 python3.12-pip python3.12-devel gcc gcc-c
       pkgconf-pkg-config libpq-devel openldap-devel libjpeg-turbo-devel zlib-devel \
       libxml2-devel libxslt-devel libffi-devel openssl-devel libyaml-devel rust cargo && \
     dnf clean all
-COPY requirements.txt requirements.out /tmp/
+COPY requirements.txt requirements.out build-constraints.txt /tmp/
 COPY src/ /src/galaxy_ng/
 COPY django-ansible-base/ /src/django-ansible-base/
 COPY system-certifi/ /src/system-certifi/
 # galaxy_ng's setup.py fetches the legacy hub UI from GitHub unless its target
 # directory exists. The console is the gateway's now, so it stays empty.
 RUN mkdir -p /src/galaxy_ng/galaxy_ng/app/static/galaxy_ng && \
-    python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /output/wheels -r /tmp/requirements.txt
+    PIP_CONSTRAINT=/tmp/build-constraints.txt \
+      python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /output/wheels -r /tmp/requirements.txt
 RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_DJANGO_ANSIBLE_BASE=2.7.20260824 \
       python3.12 -m pip wheel --no-cache-dir --no-deps --wheel-dir /output/wheels \
         /src/django-ansible-base /src/galaxy_ng /src/system-certifi && \

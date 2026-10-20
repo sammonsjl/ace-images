@@ -1,0 +1,4 @@
+# Applied to every isolated build environment (PIP_CONSTRAINT reaches them).
+# poetry 2 writes django-guid's Django requirement as metadata pip rejects
+# ("Parse error at '(>=4.0,<'"); poetry 1 writes it as the sdist itself has it.
+poetry<2
